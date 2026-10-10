@@ -39,6 +39,22 @@ QtObject {
                 }
             }
         },
+        Component {
+            // Motion
+            StackPage {
+                Component {
+                    MotionPage {}
+                }
+            }
+        },
+        Component {
+            // Appearance
+            StackPage {
+                Component {
+                    AppearancePage {}
+                }
+            }
+        },
 
         // Connectivity
         Component {
@@ -95,9 +111,15 @@ QtObject {
 
         // System
         Component {
-            PlaceholderComp {}
+            // Updates
+            StackPage {
+                Component {
+                    UpdatePage {}
+                }
+            }
         },
         Component {
+            // Plugins
             PlaceholderComp {}
         },
 
@@ -172,6 +194,14 @@ QtObject {
             StackPage {
                 Component {
                     LanguageAndRegion {}
+                }
+            }
+        },
+        Component {
+            // Hyprland
+            StackPage {
+                Component {
+                    HyprlandPage {}
                 }
             }
         },

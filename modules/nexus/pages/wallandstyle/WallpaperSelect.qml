@@ -17,6 +17,42 @@ import qs.modules.nexus.common
 PageBase {
     id: root
 
+    // Incremental reveal: only instantiate/decode wallpapers near the viewport
+    // instead of the whole collection up front. The full list is computed once;
+    // `revealed` grows as the user scrolls toward the bottom.
+    readonly property int perRow: Config.nexus.wallpapersPerRow
+    property int revealed: perRow * 3
+
+    readonly property var fullList: {
+        const walls = Wallpapers.list;
+        const baseDir = Paths.wallsdir;
+        const categories = {};
+        const list = [];
+        for (const w of walls) {
+            if (w.parentDir !== baseDir) {
+                const category = Wallpapers.getCategoryFor(w);
+                if (category && (!(category in categories) || categories[category].name.localeCompare(w.name) > 0))
+                    categories[category] = w;
+            } else {
+                list.push(w);
+            }
+        }
+        list.push(...Object.values(categories));
+        list.sort((a, b) => ((a.parentDir === baseDir) - (b.parentDir === baseDir)) || a.name.localeCompare(b.name));
+        return list;
+    }
+
+    function growChunk(): void {
+        if (root.revealed < root.fullList.length)
+            root.revealed += root.perRow * 3;
+    }
+
+    function ensureFilled(): void {
+        const f = root.flickable;
+        if (f && f.contentHeight > 0 && f.contentHeight <= f.height)
+            root.growChunk();
+    }
+
     title: Tr.tr("Wallpapers")
     isSubPage: true
 
@@ -25,6 +61,20 @@ PageBase {
         anchors.top: parent.top
         width: root.cappedWidth
         spacing: Tokens.spacing.small
+
+        Connections {
+            function onContentYChanged(): void {
+                const f = root.flickable;
+                if (f && f.contentY + f.height >= f.contentHeight - f.height)
+                    root.growChunk();
+            }
+
+            function onContentHeightChanged(): void {
+                root.ensureFilled();
+            }
+
+            target: root.flickable
+        }
 
         ButtonRow {
             Layout.bottomMargin: Tokens.spacing.medium
@@ -100,24 +150,10 @@ PageBase {
                 id: localWalls
 
                 model: {
-                    const walls = Wallpapers.list;
-                    const baseDir = Paths.wallsdir;
-                    const categories = {};
-                    const list = [];
-                    for (const w of walls) {
-                        if (w.parentDir !== baseDir) {
-                            const category = Wallpapers.getCategoryFor(w);
-                            if (category && (!(category in categories) || categories[category].name.localeCompare(w.name) > 0))
-                                categories[category] = w;
-                        } else {
-                            list.push(w);
-                        }
-                    }
-                    list.push(...Object.values(categories));
-                    list.sort((a, b) => ((a.parentDir === baseDir) - (b.parentDir === baseDir)) || a.name.localeCompare(b.name));
-                    while (list.length < Config.nexus.wallpapersPerRow)
-                        list.push(null);
-                    return list;
+                    const view = root.fullList.slice(0, root.revealed);
+                    while (view.length < root.perRow)
+                        view.push(null);
+                    return view;
                 }
 
                 WallItem {

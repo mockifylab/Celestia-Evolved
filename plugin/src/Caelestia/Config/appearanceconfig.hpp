@@ -270,6 +270,14 @@ class AppearanceTransparency : public settings::ObjectNode {
     CONFIG_GLOBAL_PROPERTY(qreal, layers, 0.4)
 };
 
+class AppearanceColors : public settings::ObjectNode {
+    CONFIG_NODE(AppearanceColors, settings::ObjectNode)
+
+    CONFIG_GLOBAL_PROPERTY(bool, customEnabled, false)
+    CONFIG_GLOBAL_PROPERTY(QString, seed, u"#a8627b"_s)
+    CONFIG_GLOBAL_PROPERTY(QString, mode, u"auto"_s)
+};
+
 class AppearanceConfig : public settings::ObjectNode {
     CONFIG_NODE(AppearanceConfig, settings::ObjectNode)
 
@@ -280,6 +288,7 @@ class AppearanceConfig : public settings::ObjectNode {
     CONFIG_SUBOBJECT(AppearanceFont, font)
     CONFIG_SUBOBJECT(AppearanceAnim, anim)
     CONFIG_SUBOBJECT(AppearanceTransparency, transparency)
+    CONFIG_GLOBAL_SUBOBJECT(AppearanceColors, colors)
 };
 
 } // namespace caelestia::config

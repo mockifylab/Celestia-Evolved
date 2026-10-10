@@ -26,6 +26,9 @@ jobs:
           echo "$GITHUB_SHA" > ".release/$RELEASE_NAME/REVISION"
           tar -C .release -czf "$RELEASE_NAME.tar.gz" "$RELEASE_NAME"
           cp "$RELEASE_NAME.tar.gz" caelestia-shell-latest.tar.gz
+          # Publish a SHA-256 digest the in-app updater can verify against.
+          sha256sum "$RELEASE_NAME.tar.gz" | awk '{print $1}' > "$RELEASE_NAME.tar.gz.sha256"
+          echo "RELEASE_SHA256=$(cat "$RELEASE_NAME.tar.gz.sha256")" >> "$GITHUB_ENV"
 
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v3
@@ -33,6 +36,12 @@ jobs:
           files: |
             ${{ env.RELEASE_NAME }}.tar.gz
             caelestia-shell-latest.tar.gz
+            ${{ env.RELEASE_NAME }}.tar.gz.sha256
+          # The updater reads the digest from this marker (GitHub's API exposes
+          # no per-asset checksum field), so keep the `sha256:<hex>` form.
+          body: |
+            <!-- updater-digest sha256:${{ env.RELEASE_SHA256 }} -->
+          append_body: true
           generate_release_notes: true
 
       - name: Update stable branch

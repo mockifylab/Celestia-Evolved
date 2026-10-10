@@ -140,7 +140,54 @@ Scope {
             WindowFactory.create();
         }
 
+        function openPage(page: string): void {
+            // Accepts "<page>" or "<page>:<subpage>" (indices into the registries).
+            const parts = `${page}`.split(":");
+            const idx = parseInt(parts[0]);
+            if (isNaN(idx)) {
+                WindowFactory.create();
+                return;
+            }
+            const sub = parts.length > 1 ? parseInt(parts[1]) : 0;
+            WindowFactory.create(null, {
+                initialPage: idx,
+                initialSubPage: isNaN(sub) ? 0 : sub
+            });
+        }
+
         target: "nexus"
+    }
+
+    // Safe in-app updater (see services/Updater.qml). Exposed over IPC so the
+    // flow can also be scripted without opening Nexus.
+    IpcHandler {
+        function check(): void {
+            Updater.check();
+        }
+
+        function download(): void {
+            Updater.download();
+        }
+
+        function install(): void {
+            Updater.install();
+        }
+
+        function rollback(): void {
+            Updater.rollback();
+        }
+
+        function status(): string {
+            return JSON.stringify({
+                state: Updater.state,
+                current: Updater.currentVersion,
+                latest: Updater.latestVersion,
+                message: Updater.message,
+                rollbackAvailable: Updater.rollbackAvailable
+            });
+        }
+
+        target: "updates"
     }
 
     IpcHandler {

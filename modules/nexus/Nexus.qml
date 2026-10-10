@@ -18,7 +18,16 @@ Item {
     }
     property color blobColour: Colours.tPalette.m3surfaceContainerLow
 
+    property int initialPage: 0
+    property int initialSubPage: 0
+
     signal close
+
+    Component.onCompleted: {
+        nState.currentPageIdx = root.initialPage;
+        if (root.initialSubPage > 0)
+            Qt.callLater(() => nState.openSubPage(root.initialSubPage));
+    }
 
     implicitWidth: Math.round(implicitHeight * Tokens.sizes.nexus.ratio)
     implicitHeight: Math.round(nState.screen.height * Tokens.sizes.nexus.heightMult)

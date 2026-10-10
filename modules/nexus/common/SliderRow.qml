@@ -15,6 +15,9 @@ ConnectedRect {
     property alias label: label.text
     property alias valueLabel: valueLabel.text
     property real value
+    property real from: 0
+    property real to: 1
+    property real stepSize: 0
 
     signal moved(value: real)
 
@@ -62,11 +65,11 @@ ConnectedRect {
 
             CustomMouseArea {
                 function onWheel(event: WheelEvent): void {
-                    const step = GlobalConfig.services.audioIncrement;
+                    const step = root.stepSize > 0 ? root.stepSize : GlobalConfig.services.audioIncrement;
                     if (event.angleDelta.y > 0)
-                        root.moved(Math.min(1, root.value + step));
+                        root.moved(Math.min(root.to, root.value + step));
                     else if (event.angleDelta.y < 0)
-                        root.moved(Math.max(0, root.value - step));
+                        root.moved(Math.max(root.from, root.value - step));
                 }
 
                 Layout.fillWidth: true
@@ -79,6 +82,9 @@ ConnectedRect {
                     implicitHeight: parent.implicitHeight
 
                     radius: Tokens.rounding.small
+                    from: root.from
+                    to: root.to
+                    stepSize: root.stepSize > 0 ? root.stepSize : 0
                     value: root.value
                     enabled: root.enabled
                     onInteraction: v => root.moved(v)

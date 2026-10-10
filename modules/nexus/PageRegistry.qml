@@ -14,6 +14,18 @@ QtObject {
             description: Tr.tr("Wallpaper, fonts, colours"),
             category: "appearance"
         },
+        {
+            label: Tr.tr("Motion"),
+            icon: "animation",
+            description: Tr.tr("Animation speed, morph, spring"),
+            category: "appearance"
+        },
+        {
+            label: Tr.tr("Appearance"),
+            icon: "tune",
+            description: Tr.tr("Density, typography, transparency"),
+            category: "appearance"
+        },
 
         // Connectivity
         // TODO
@@ -80,6 +92,12 @@ QtObject {
             label: Tr.tr("Language & region"),
             icon: "globe",
             description: Tr.tr("UI language, weather location, display units"),
+            category: "shell"
+        },
+        {
+            label: Tr.tr("Hyprland"),
+            icon: "memory",
+            description: Tr.tr("Compositor, decorations, input"),
             category: "shell"
         },
 

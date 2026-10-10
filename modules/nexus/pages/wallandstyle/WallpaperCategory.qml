@@ -10,11 +10,31 @@ import qs.modules.nexus.common
 PageBase {
     id: root
 
+    // Incremental reveal: only instantiate/decode wallpapers near the viewport
+    // instead of the whole category up front (see WallpaperSelect for rationale).
+    readonly property int perRow: Config.nexus.wallpapersPerRow
+    property int revealed: perRow * 3
+
+    readonly property var fullList: Wallpapers.list.filter(w => Wallpapers.getCategoryFor(w) === root.nState.selectedWallpaperCategory).sort((a, b) => a.name.localeCompare(b.name))
+
+    function growChunk(): void {
+        if (root.revealed < root.fullList.length)
+            root.revealed += root.perRow * 3;
+    }
+
+    function ensureFilled(): void {
+        const f = root.flickable;
+        if (f && f.contentHeight > 0 && f.contentHeight <= f.height)
+            root.growChunk();
+    }
+
     title: {
         const c = nState.selectedWallpaperCategory;
         return c.slice(0, 1).toUpperCase() + c.slice(1);
     }
     isSubPage: true
+
+    onFullListChanged: revealed = perRow * 3
 
     GridLayout {
         anchors.horizontalCenter: parent.horizontalCenter
@@ -25,12 +45,26 @@ PageBase {
         rowSpacing: Tokens.spacing.medium
         columnSpacing: Tokens.spacing.large
 
+        Connections {
+            function onContentYChanged(): void {
+                const f = root.flickable;
+                if (f && f.contentY + f.height >= f.contentHeight - f.height)
+                    root.growChunk();
+            }
+
+            function onContentHeightChanged(): void {
+                root.ensureFilled();
+            }
+
+            target: root.flickable
+        }
+
         Repeater {
             model: {
-                const walls = Wallpapers.list.filter(w => Wallpapers.getCategoryFor(w) === root.nState.selectedWallpaperCategory).sort((a, b) => a.name.localeCompare(b.name));
-                while (walls.length < Config.nexus.wallpapersPerRow)
-                    walls.push(null);
-                return walls;
+                const view = root.fullList.slice(0, root.revealed);
+                while (view.length < root.perRow)
+                    view.push(null);
+                return view;
             }
 
             WallItem {

@@ -60,6 +60,10 @@ Singleton {
     }
 
     function load(data: string, isPreview: bool): void {
+        // When custom in-shell colours are enabled they win over scheme.json.
+        if (!isPreview && GlobalConfig.appearance.colors.customEnabled)
+            return;
+
         const colours = isPreview ? preview : current;
         const scheme = JSON.parse(data);
 
@@ -80,6 +84,23 @@ Singleton {
 
     function setMode(mode: string): void {
         Quickshell.execDetached(["caelestia", "scheme", "set", "--notify", "-m", mode]);
+    }
+
+    // Generate the full M3 palette from the configured seed and write it into the
+    // live palette so every surface adopts it. No-op when custom colours are off.
+    function applyCustom(): void {
+        const c = GlobalConfig.appearance.colors;
+        if (!c.customEnabled)
+            return;
+
+        const light = c.mode === "light" ? true : c.mode === "dark" ? false : root.currentLight;
+        root.currentLight = light;
+
+        const roles = ColorGen.roles(c.seed, light);
+        for (const [name, colour] of Object.entries(roles)) {
+            if (root.current.hasOwnProperty(name))
+                root.current[name] = colour;
+        }
     }
 
     function reloadHyprRules(): void {
@@ -103,7 +124,31 @@ Singleton {
         }
     }
 
-    Component.onCompleted: root.requestReloadHyprRules()
+    Component.onCompleted: {
+        root.applyCustom();
+        root.requestReloadHyprRules();
+    }
+
+    Connections {
+        function onCustomEnabledChanged(): void {
+            if (GlobalConfig.appearance.colors.customEnabled) {
+                root.applyCustom();
+            } else {
+                // Reverting to the standard scheme.json / CLI behaviour.
+                schemeFile.reload();
+            }
+        }
+
+        function onSeedChanged(): void {
+            root.applyCustom();
+        }
+
+        function onModeChanged(): void {
+            root.applyCustom();
+        }
+
+        target: GlobalConfig.appearance.colors
+    }
 
     Connections {
         function onConfigReloaded(): void {
@@ -114,6 +159,8 @@ Singleton {
     }
 
     FileView {
+        id: schemeFile
+
         path: `${Paths.state}/scheme.json`
         watchChanges: true
         onFileChanged: reload()

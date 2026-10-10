@@ -1,9 +1,10 @@
 name: Update Docker CI image
 
+# Optional: only needed if you want to build your own copy of the CI image.
+# By default the other workflows consume the upstream image directly, so this is
+# manual-only and never runs on a schedule.
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "0 0 * * 0"
 
 permissions:
   packages: write
