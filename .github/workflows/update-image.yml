@@ -1,8 +1,10 @@
 name: Update Docker CI image
 
-# Optional: only needed if you want to build your own copy of the CI image.
-# By default the other workflows consume the upstream image directly, so this is
-# manual-only and never runs on a schedule.
+# Forks need this: the Build / Lint / Check-format jobs run inside
+# ghcr.io/<owner>/shell-arch-env, which is private and built here. Run this
+# workflow once (manually) to bootstrap the image for your repo, then the
+# other workflows can pull it with the built-in GITHUB_TOKEN. Upstream keeps
+# its own copy of this image, so this is manual-only and never scheduled.
 on:
   workflow_dispatch:
 
