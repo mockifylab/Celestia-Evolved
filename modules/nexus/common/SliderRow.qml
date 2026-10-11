@@ -87,7 +87,12 @@ ConnectedRect {
                     stepSize: root.stepSize > 0 ? root.stepSize : 0
                     value: root.value
                     enabled: root.enabled
-                    onInteraction: v => root.moved(v)
+                    onInteraction: v => {
+                        let actual = root.from + v * (root.to - root.from);
+                        if (root.stepSize > 0)
+                            actual = Math.round((actual - root.from) / root.stepSize) * root.stepSize + root.from;
+                        root.moved(Math.max(root.from, Math.min(root.to, actual)));
+                    }
                 }
             }
         }
