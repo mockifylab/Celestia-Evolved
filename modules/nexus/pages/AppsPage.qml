@@ -136,7 +136,7 @@ PageBase {
                         IconImage {
                             asynchronous: true
                             implicitSize: Math.round(Tokens.font.icon.large.pointSize * 1.8)
-                            source: Quickshell.iconPath(appItem.modelData.icon, "image-missing")
+                            source: Quickshell.iconPath(appItem.modelData.icon, "application-x-executable")
                         }
 
                         ColumnLayout {
