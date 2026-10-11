@@ -49,7 +49,10 @@ private:
     HyprDevices* const m_devices;
 
     SocketPtr m_optionsRefresh;
+    SocketPtr m_valuesRefresh;
     SocketPtr m_devicesRefresh;
+
+    void refreshOptionValues(const QStringList& keys);
 
     void socketError(QLocalSocket::LocalSocketError error) const;
     void socketStateChanged(QLocalSocket::LocalSocketState state);
@@ -58,6 +61,7 @@ private:
 
     SocketPtr makeRequestJson(const QString& request, const std::function<void(bool, QJsonDocument)>& callback);
     SocketPtr makeRequest(const QString& request, const std::function<void(bool, QByteArray)>& callback);
+    SocketPtr makeAccumulatedRequest(const QString& request, const std::function<void(bool, QByteArray)>& callback);
 };
 
 } // namespace caelestia::services::hypr
