@@ -34,6 +34,9 @@ Item {
     readonly property alias toasts: toasts
     readonly property alias sidebar: sidebar
 
+    readonly property bool notifAtTop: GlobalConfig.notifs.placement === NotifPlacement.TopLeft || GlobalConfig.notifs.placement === NotifPlacement.Top || GlobalConfig.notifs.placement === NotifPlacement.TopRight
+    readonly property bool notifCentered: GlobalConfig.notifs.placement === NotifPlacement.Top || GlobalConfig.notifs.placement === NotifPlacement.Bottom
+
     anchors.fill: parent
     anchors.margins: borderThickness
     anchors.leftMargin: bar.implicitWidth
@@ -70,8 +73,10 @@ Item {
         sessionPanel: sessionWrapper
         utilitiesPanel: utilities
 
-        anchors.top: parent.top
-        anchors.right: parent.right
+        anchors.top: root.notifAtTop ? parent.top : undefined
+        anchors.bottom: root.notifAtTop ? undefined : parent.bottom
+        anchors.right: root.notifCentered ? undefined : parent.right
+        anchors.horizontalCenter: root.notifCentered ? parent.horizontalCenter : undefined
     }
 
     Item {
@@ -147,9 +152,9 @@ Item {
 
         screenState: root.screenState
 
-        anchors.top: notifications.bottom
+        anchors.top: root.notifAtTop ? notifications.bottom : parent.top
         anchors.bottom: utilities.top
         anchors.right: parent.right
-        anchors.topMargin: -notifications.anchors.topMargin
+        anchors.topMargin: root.notifAtTop ? -notifications.anchors.topMargin : 0
     }
 }

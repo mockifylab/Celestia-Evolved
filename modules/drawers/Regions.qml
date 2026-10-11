@@ -57,7 +57,7 @@ Region {
 
     R {
         panel: root.panels.notifications
-        y: 0
+        y: GlobalConfig.notifs.placement === NotifPlacement.BottomLeft || GlobalConfig.notifs.placement === NotifPlacement.Bottom || GlobalConfig.notifs.placement === NotifPlacement.BottomRight ? root.win.height - height : 0
         height: panel.height + root.borderThickness
     }
 
