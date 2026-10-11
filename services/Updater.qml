@@ -24,7 +24,10 @@ Singleton {
     // --- Configuration (env-overridable for testing / self-hosting) ---
 
     readonly property string repo: Quickshell.env("CAELESTIA_UPDATE_REPO") || "mockifylab/Celestia-Shell_Reimagend"
-    readonly property string feedUrl: Quickshell.env("CAELESTIA_UPDATE_FEED") || `https://api.github.com/repos/${repo}/releases/latest`
+    // feedOverride exists for tests and self-hosting; it defaults to the env
+    // override so CAELESTIA_UPDATE_FEED keeps working.
+    property string feedOverride: Quickshell.env("CAELESTIA_UPDATE_FEED") || ""
+    readonly property string feedUrl: feedOverride !== "" ? feedOverride : `https://api.github.com/repos/${repo}/releases/latest`
     readonly property string currentVersion: Quickshell.env("CAELESTIA_UPDATE_CURRENT") || CUtils.version
     readonly property string helper: Quickshell.env("CAELESTIA_UPDATE_HELPER") || Quickshell.shellPath("assets/update/apply_update.sh")
 
