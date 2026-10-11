@@ -226,12 +226,20 @@ Item {
                     required property var modelData
                     required property int index // Needed, LazyListView will fail to set it if it doesn't exist
 
+                    readonly property bool minimized: Hypr.isMinimized(modelData as HyprlandToplevel)
+
                     grade: 0
                     horizontalAlignment: Text.AlignHCenter
                     text: Icons.getAppCategoryIcon(modelData.lastIpcObject.class, "terminal")
                     color: root.onOtherMonitor ? root.offMonitorColour : Colours.palette.m3onSurfaceVariant
 
-                    opacity: LazyListView.adding || LazyListView.removing ? 0 : 1
+                    opacity: LazyListView.adding || LazyListView.removing ? 0 : win.minimized ? 0.4 : 1
+
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: Hypr.focusOrRestore(win.modelData as HyprlandToplevel)
+                    }
 
                     Behavior on opacity {
                         Anim {

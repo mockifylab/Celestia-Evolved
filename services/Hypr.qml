@@ -38,10 +38,64 @@ Singleton {
 
     property string lastSpecialWorkspace: ""
 
+    // Hyprland removed the minimize dispatcher; minimize is emulated by parking
+    // windows in a dedicated special workspace, remembering where they came from.
+    readonly property string minimizeWorkspace: "special:minimized"
+    property var minimizedOrigins: ({})
+
     signal configReloaded
 
     function dispatch(request: string): void {
         Hyprland.dispatch(request);
+    }
+
+    function isMinimized(toplevel: HyprlandToplevel): bool {
+        return toplevel?.workspace?.name === root.minimizeWorkspace;
+    }
+
+    function pruneMinimizedOrigins(): void {
+        const alive = new Set(root.toplevels.values.map(t => t.lastIpcObject?.address));
+        for (const addr of Object.keys(root.minimizedOrigins)) {
+            if (!alive.has(addr))
+                delete root.minimizedOrigins[addr];
+        }
+
+        root.minimizedOriginsChanged();
+    }
+
+    function minimizeWindow(toplevel: HyprlandToplevel): void {
+        const addr = toplevel?.lastIpcObject?.address;
+        if (!addr || root.isMinimized(toplevel))
+            return;
+
+        root.minimizedOrigins[addr] = toplevel.workspace?.id ?? root.activeWsId;
+        root.pruneMinimizedOrigins();
+        root.dispatch(root.usingLua ? `hl.dsp.window.move({ window = "address:${addr}", workspace = "${root.minimizeWorkspace}" })` : `movetoworkspacesilent ${root.minimizeWorkspace},address:${addr}`);
+    }
+
+    function restoreWindow(toplevel: HyprlandToplevel): void {
+        const addr = toplevel?.lastIpcObject?.address;
+        if (!addr)
+            return;
+
+        const origin = root.minimizedOrigins[addr] ?? root.activeWsId;
+        delete root.minimizedOrigins[addr];
+        root.minimizedOriginsChanged();
+        root.dispatch(root.usingLua ? `hl.dsp.window.move({ window = "address:${addr}", workspace = "${origin}", follow = true })` : `movetoworkspace ${origin},address:${addr}`);
+    }
+
+    function focusOrRestore(toplevel: HyprlandToplevel): void {
+        const addr = toplevel?.lastIpcObject?.address;
+        if (!addr)
+            return;
+
+        if (root.isMinimized(toplevel)) {
+            root.restoreWindow(toplevel);
+            return;
+        }
+
+        const ws = toplevel.workspace?.id ?? root.activeWsId;
+        root.dispatch(root.usingLua ? `hl.dsp.window.move({ window = "address:${addr}", workspace = "${ws}", follow = true })` : `movetoworkspace ${ws},address:${addr}`);
     }
 
     function focusWorkspace(ws: var): void {
@@ -98,7 +152,15 @@ Singleton {
     }
 
     function toplevelsForWs(ws: int, ignoredTags = []): list<HyprlandToplevel> {
-        return toplevels.values.filter(t => t.workspace && t.workspace.id === ws && !isToplevelIgnored(t, ignoredTags));
+        return root.toplevels.values.filter(t => {
+            if (isToplevelIgnored(t, ignoredTags))
+                return false;
+
+            if (root.isMinimized(t))
+                return root.minimizedOrigins[t.lastIpcObject.address] === ws;
+
+            return t.workspace && t.workspace.id === ws;
+        });
     }
 
     function isToplevelIgnored(toplevel: HyprlandToplevel, ignoredTags = []): bool {
@@ -132,9 +194,13 @@ Singleton {
             } else if (["workspace", "moveworkspace", "activespecial", "focusedmon"].includes(n)) {
                 Hyprland.refreshWorkspaces();
                 Hyprland.refreshMonitors();
+                if (n === "activespecial")
+                    Hyprland.refreshToplevels();
             } else if (["openwindow", "closewindow", "movewindow"].includes(n)) {
                 Hyprland.refreshToplevels();
                 Hyprland.refreshWorkspaces();
+                if (n === "closewindow")
+                    Qt.callLater(root.pruneMinimizedOrigins);
             } else if (n.includes("mon")) {
                 Hyprland.refreshMonitors();
             } else if (n.includes("workspace")) {

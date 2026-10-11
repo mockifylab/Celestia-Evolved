@@ -138,6 +138,13 @@ ColumnLayout {
         }
 
         Button {
+            color: Colours.palette.m3secondaryContainer
+            onColor: Colours.palette.m3onSecondaryContainer
+            text: Hypr.isMinimized(root.client) ? Tr.tr("Restore") : Tr.tr("Minimize")
+            onClicked: Hypr.isMinimized(root.client) ? Hypr.restoreWindow(root.client) : Hypr.minimizeWindow(root.client)
+        }
+
+        Button {
             color: Colours.palette.m3errorContainer
             onColor: Colours.palette.m3onErrorContainer
             text: Tr.tr("Kill")
