@@ -111,7 +111,15 @@ Singleton {
         if (!c.customEnabled)
             return;
 
-        const light = c.mode === "light" ? true : c.mode === "dark" ? false : root.currentLight;
+        let light;
+        if (c.mode === "light")
+            light = true;
+        else if (c.mode === "dark")
+            light = false;
+        else
+            // auto: derive from wallpaper luminance (>0.5 → light)
+            light = analyser.luminance > 0.5;
+
         root.currentLight = light;
 
         const roles = ColorGen.roles(c.seed, light);
@@ -170,6 +178,16 @@ Singleton {
         target: GlobalConfig.appearance.colors
     }
 
+    // Re-evaluate auto mode when wallpaper luminance changes
+    Connections {
+        function onLuminanceChanged(): void {
+            if (GlobalConfig.appearance.colors.customEnabled && GlobalConfig.appearance.colors.mode === "auto")
+                root.applyCustom();
+        }
+
+        target: analyser
+    }
+
     Connections {
         function onConfigReloaded(): void {
             root.reloadHyprRules();
@@ -205,7 +223,15 @@ Singleton {
 
         onDominantColourChanged: {
             const seed = ColorGen.toHex(dominantColour);
-            const light = root.currentLight;
+            const mode = GlobalConfig.appearance.colors.mode;
+            let light;
+            if (mode === "light")
+                light = true;
+            else if (mode === "dark")
+                light = false;
+            else
+                light = analyser.luminance > 0.5;
+            root.currentLight = light;
             const roles = ColorGen.roles(seed, light);
             for (const [name, colour] of Object.entries(roles)) {
                 if (root.current.hasOwnProperty(name))
@@ -220,7 +246,15 @@ Singleton {
 
         onDominantColourChanged: {
             const seed = ColorGen.toHex(dominantColour);
-            const light = root.previewLight;
+            const mode = GlobalConfig.appearance.colors.mode;
+            let light;
+            if (mode === "light")
+                light = true;
+            else if (mode === "dark")
+                light = false;
+            else
+                light = analyser.luminance > 0.5;
+            root.previewLight = light;
             const roles = ColorGen.roles(seed, light);
             for (const [name, colour] of Object.entries(roles)) {
                 if (root.preview.hasOwnProperty(name))
