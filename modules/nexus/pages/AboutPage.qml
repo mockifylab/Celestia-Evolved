@@ -83,7 +83,7 @@ PageBase {
 
                 StyledText {
                     Layout.alignment: Qt.AlignHCenter
-                    text: CUtils.version ? `v${CUtils.version}` : "…"
+                    text: CUtils.version ? `v${CUtils.version}` : "—"
                     color: Colours.palette.m3onSurfaceVariant
                     font: Tokens.font.body.medium
                 }
@@ -131,23 +131,23 @@ PageBase {
         InfoRow {
             first: true
             label: Tr.trCtx("Shell", "the caelestia shell itself, not a unix shell")
-            value: CUtils.version || "…"
+            value: CUtils.version || "—"
         }
 
         InfoRow {
             label: Tr.trCtx("CLI", "the caelestia command line tool")
-            value: root.cliVersion || "…"
+            value: root.cliVersion || "—"
         }
 
         InfoRow {
             label: "Quickshell"
-            value: root.quickshellVersion || "…"
+            value: root.quickshellVersion || "—"
         }
 
         InfoRow {
             last: true
             label: "Qt"
-            value: CUtils.qtVersion || "…"
+            value: CUtils.qtVersion || "—"
         }
 
         // Plugins
