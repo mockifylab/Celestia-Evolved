@@ -2,9 +2,11 @@ import QtQuick
 import QtQuick.Layouts
 import Quickshell.Io
 import Caelestia
+import Caelestia.Components
 import Caelestia.Config
 import Caelestia.I18n
 import qs.components
+import qs.components.controls
 import qs.services
 import qs.utils
 import qs.modules.nexus.common
@@ -14,6 +16,10 @@ PageBase {
 
     // Plugin support is not wired up yet; always 0 for now
     readonly property int pluginCount: 0
+
+    // Developer / project homepage (single source of truth for the button below)
+    readonly property string developerName: "Aasif"
+    readonly property string developerUrl: "https://github.com/mockifylab"
 
     property string quickshellVersion
     property string cliVersion
@@ -154,6 +160,34 @@ PageBase {
             last: true
             label: Tr.tr("Loaded plugins")
             value: root.pluginCount.toString()
+        }
+
+        // Developer
+        SectionHeader {
+            text: Tr.tr("Developer")
+        }
+
+        InfoRow {
+            first: true
+            last: true
+            label: Tr.tr("Developed by")
+            value: root.developerName
+        }
+
+        ButtonRow {
+            Layout.topMargin: Tokens.spacing.medium
+            Layout.alignment: Qt.AlignHCenter
+            spacing: Tokens.spacing.small
+
+            IconTextButton {
+                icon: "code"
+                text: Tr.tr("View on GitHub")
+                font: Tokens.font.body.large
+                isRound: true
+                shapeMorph: true
+                type: IconTextButton.Tonal
+                onClicked: Qt.openUrlExternally(root.developerUrl)
+            }
         }
     }
 }
