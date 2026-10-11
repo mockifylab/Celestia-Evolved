@@ -30,20 +30,28 @@ Searcher {
     }
 
     function setRandom(): void {
-        Quickshell.execDetached(["caelestia", "wallpaper", "-r", ...smartArg]);
+        const entries = wallpapers.entries;
+        if (entries.length === 0)
+            return;
+        const idx = Math.floor(Math.random() * entries.length);
+        root.setWallpaper(entries[idx].path);
     }
 
     function setWallpaper(path: string): void {
         actualCurrent = path;
-        Quickshell.execDetached(["caelestia", "wallpaper", "-f", path, ...smartArg]);
+        // Persist the path for restoration on shell restart / reboot
+        pathWriter.setText(path);
+        // Extract dominant colour and generate palette from it
+        if (Colours.scheme === "dynamic" || !GlobalConfig.appearance.colors.customEnabled)
+            Qt.callLater(() => Colours.applyWallpaper(path));
     }
 
     function preview(path: string): void {
         previewPath = path;
         showPreview = true;
 
-        if (Colours.scheme === "dynamic")
-            getPreviewColoursProc.running = true;
+        if (Colours.scheme === "dynamic" || !GlobalConfig.appearance.colors.customEnabled)
+            Colours.previewWallpaper(path);
     }
 
     function stopPreview(): void {
@@ -83,23 +91,27 @@ Searcher {
     }
 
     FileView {
+        id: pathWriter
+
+        path: root.currentNamePath
+        printErrors: false
+    }
+
+    FileView {
         path: root.currentNamePath
         watchChanges: true
         printErrors: false
         onFileChanged: reload()
         onLoaded: {
             let wall = text().trim();
-            if (!wall) {
+            if (!wall)
                 wall = root.fallback;
-                Quickshell.execDetached(["caelestia", "wallpaper", "-f", root.fallback, ...root.smartArg]);
-            }
             root.actualCurrent = wall;
             root.previewColourLock = false;
         }
         onLoadFailed: {
             root.actualCurrent = root.fallback;
             root.previewColourLock = false;
-            Quickshell.execDetached(["caelestia", "wallpaper", "-f", root.fallback, ...root.smartArg]);
         }
     }
 
@@ -109,17 +121,5 @@ Searcher {
         recursive: true
         path: Paths.wallsdir
         filter: FileSystemModel.Images
-    }
-
-    Process {
-        id: getPreviewColoursProc
-
-        command: ["caelestia", "wallpaper", "-p", root.previewPath, ...root.smartArg]
-        stdout: StdioCollector {
-            onStreamFinished: {
-                Colours.load(text, true);
-                Colours.showPreview = true;
-            }
-        }
     }
 }

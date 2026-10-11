@@ -273,7 +273,7 @@ class AppearanceTransparency : public settings::ObjectNode {
 class AppearanceColors : public settings::ObjectNode {
     CONFIG_NODE(AppearanceColors, settings::ObjectNode)
 
-    CONFIG_GLOBAL_PROPERTY(bool, customEnabled, false)
+    CONFIG_GLOBAL_PROPERTY(bool, customEnabled, true)
     CONFIG_GLOBAL_PROPERTY(QString, seed, u"#a8627b"_s)
     CONFIG_GLOBAL_PROPERTY(QString, mode, u"auto"_s)
 };
