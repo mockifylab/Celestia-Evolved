@@ -27,6 +27,8 @@ Singleton {
 
     property bool cooldownPending
     property real lastBaseTransparency
+    // Last rule payload actually sent to the compositor.
+    property string lastHyprRuleSignature: ""
 
     // --- Palette sources (v1.0.2) ---
     // Which generator owns the live palette. The choice is stored in shell
@@ -368,21 +370,31 @@ Singleton {
             rule = "keyword layerrule %1 %2, match:namespace caelestia-drawers";
             trEnabled = transparency.enabled ? 1 : 0;
         }
-        Hypr.extras.batchMessage([rule.arg("blur").arg(trEnabled), rule.arg("ignore_alpha").arg(Math.max(0, transparency.base - 0.03))]);
+        const ignoreAlpha = Math.max(0, transparency.base - 0.03);
+        const signature = `${trEnabled}|${ignoreAlpha.toFixed(3)}`;
+        // Re-applying a compositor layer rule is not free: Hyprland rebuilds the
+        // blur for the affected layer. Nothing below changed since the last
+        // request, so there is nothing to send.
+        if (signature === root.lastHyprRuleSignature)
+            return;
+        root.lastHyprRuleSignature = signature;
+        Hypr.extras.batchMessage([rule.arg("blur").arg(trEnabled), rule.arg("ignore_alpha").arg(ignoreAlpha)]);
     }
 
     function requestReloadHyprRules(): void {
-        if (cooldownTimer.running) {
-            root.cooldownPending = true;
-        } else {
-            root.reloadHyprRules();
-            cooldownTimer.restart();
-        }
+        // Trailing-edge debounce. Transparency and palette changes can arrive per
+        // pointer sample; the compositor only ever needs the last one. QML
+        // surfaces update immediately from their own bindings, so this delay is
+        // not visible in the shell itself.
+        root.cooldownPending = true;
+        cooldownTimer.restart();
     }
 
     Component.onCompleted: {
         themeFile.reload();
-        root.requestReloadHyprRules();
+        // The startup rule is applied directly: waiting for the debounce would
+        // briefly leave the drawers without their blur.
+        root.reloadHyprRules();
     }
 
     Connections {
@@ -429,6 +441,9 @@ Singleton {
 
     Connections {
         function onConfigReloaded(): void {
+            // A config reload drops the runtime layer rules even when the values
+            // we would send are unchanged, so the dedupe must forget them.
+            root.lastHyprRuleSignature = "";
             root.reloadHyprRules();
         }
 
@@ -523,7 +538,9 @@ Singleton {
     ImageAnalyser {
         id: analyser
 
-        source: Wallpapers.current
+        // The settled preview, not the live cursor position: this analyser
+        // decodes the whole image, which must not happen per scroll step.
+        source: Wallpapers.analysedWallpaper
     }
 
     // Separate analysers for applying and previewing wallpaper-derived colours
@@ -562,6 +579,10 @@ Singleton {
         id: previewAnalyser
 
         onDominantColourChanged: {
+            // A result for a preview the user has already left must not
+            // resurrect it. An accept in flight (colour lock set) still applies.
+            if (!Wallpapers.showPreview && !Wallpapers.previewColourLock)
+                return;
             const seed = ColorGen.toHex(previewAnalyser.dominantColour);
             const light = root.resolveLight();
             root.previewLight = light;
@@ -591,13 +612,12 @@ Singleton {
     Timer {
         id: cooldownTimer
 
-        interval: 30
+        interval: 250
         onTriggered: {
-            if (root.cooldownPending) {
-                root.cooldownPending = false;
-                root.reloadHyprRules();
-                restart();
-            }
+            if (!root.cooldownPending)
+                return;
+            root.cooldownPending = false;
+            root.reloadHyprRules();
         }
     }
 

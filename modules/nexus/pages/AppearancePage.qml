@@ -14,7 +14,18 @@ import qs.modules.nexus.common
 PageBase {
     id: root
 
-    readonly property var families: Qt.fontFamilies()
+    // Enumerating the system's fonts and wiring one selectable entry per family
+    // is thousands of objects (a full TeX install alone can list two thousand
+    // families). That used to happen as this page opened. The family list is now
+    // built the first time a font row is actually opened, and until then each row
+    // offers the family already in use, which is also what it shows.
+    property bool fontListLoaded
+    property var systemFamilies: []
+
+    // Each row has its own flag, so opening "Interface font" does not also build
+    // the menu items for "Monospace font".
+    property bool interfaceFontsWanted
+    property bool monoFontsWanted
 
     readonly property string interfaceFamily: Config.appearance.font.body.family
 
@@ -22,8 +33,8 @@ PageBase {
 
     // Prepend the effective current family when it isn't a system font (e.g. the
     // bundled GoogleSansFlex resource) so it is always shown and selectable.
-    readonly property var interfaceFontList: root.interfaceFamily && !root.families.includes(root.interfaceFamily) ? [root.interfaceFamily].concat(root.families) : root.families
-    readonly property var monoFontList: root.monoFamily && !root.families.includes(root.monoFamily) ? [root.monoFamily].concat(root.families) : root.families
+    readonly property var interfaceFontList: root.interfaceFontsWanted && root.fontListLoaded ? root.withFirst(root.systemFamilies, root.interfaceFamily) : (root.interfaceFamily ? [root.interfaceFamily] : [])
+    readonly property var monoFontList: root.monoFontsWanted && root.fontListLoaded ? root.withFirst(root.systemFamilies, root.monoFamily) : (root.monoFamily ? [root.monoFamily] : [])
 
     // Custom colour theming
     readonly property list<string> seedPresets: ["#a8627b", "#5b6ee1", "#00897b", "#c77dff", "#ff6d00", "#e91e63", "#2e7d32", "#0288d1", "#8d6e63", "#607d8b"]
@@ -70,6 +81,28 @@ PageBase {
 
     function clamp(v: real, lo: real, hi: real): real {
         return Math.max(lo, Math.min(hi, v));
+    }
+
+    // Keep the effective family at the head of the list even when fontconfig
+    // does not report it (bundled or synthetic faces).
+    function withFirst(families: var, current: string): var {
+        if (!current || families.includes(current))
+            return families;
+        return [current].concat(families);
+    }
+
+    // Opening a font row is the only moment the family list is worth building.
+    // The system enumeration happens once and is shared, but each row keeps its
+    // own "wanted" flag so the other row's items are never constructed.
+    function loadFontList(row: string): void {
+        if (row === "mono")
+            root.monoFontsWanted = true;
+        else
+            root.interfaceFontsWanted = true;
+        if (root.fontListLoaded)
+            return;
+        root.systemFamilies = Qt.fontFamilies();
+        root.fontListLoaded = true;
     }
 
     // Honest description of what the wallpaper source is doing right now.
@@ -301,6 +334,7 @@ PageBase {
             active: interfaceFontItems.instances.find(i => i.modelData === root.interfaceFamily) ?? null
             // qmllint disable missing-property
             onSelected: item => root.setInterfaceFamily(item.modelData ?? "")
+            onOpened: root.loadFontList("interface")
             // qmllint enable missing-property
 
             Variants {
@@ -325,6 +359,7 @@ PageBase {
             active: monoFontItems.instances.find(i => i.modelData === root.monoFamily) ?? null
             // qmllint disable missing-property
             onSelected: item => root.setMonoFamily(item.modelData ?? "")
+            onOpened: root.loadFontList("mono")
             // qmllint enable missing-property
 
             Variants {

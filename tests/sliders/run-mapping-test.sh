@@ -1,28 +1,44 @@
 #!/usr/bin/env bash
 # Automated regression tests for the shared slider value-mapping maths used by
-# every settings slider (modules/nexus/common/sliderMapping.js).
+# every settings slider (modules/nexus/common/sliderMapping.js) and the shared
+# write throttle (utils/writeThrottle.js).
 # Covers: range boundaries, midpoints, step snapping (incl. negative ranges),
-# float-artefact elimination, out-of-range validation, and the exact ranges
-# configured by the Appearance / Motion / Hyprland / Audio sliders.
+# float-artefact elimination, out-of-range validation, the exact ranges
+# configured by the Appearance / Motion / Hyprland / Audio sliders, and the
+# write throttle that stops a drag from writing one setting per pointer sample.
 set -u
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
 SRC="$REPO/modules/nexus/common/sliderMapping.js"
+THROTTLE_SRC="$REPO/utils/writeThrottle.js"
 [ -f "$SRC" ] || { echo "FAIL: missing $SRC"; exit 1; }
+[ -f "$THROTTLE_SRC" ] || { echo "FAIL: missing $THROTTLE_SRC"; exit 1; }
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
 # QML `.pragma library` is not Node JS; strip it, then export the functions.
-tail -n +2 "$SRC" > "$WORK/mapping.js"
+strip_pragma() { grep -v '^\.pragma library$' "$1"; }
+
+strip_pragma "$SRC" > "$WORK/mapping.js"
 cat >> "$WORK/mapping.js" <<'EOF'
 module.exports = { clamp, snap, positionToValue, decimalsOf };
 EOF
 
+strip_pragma "$THROTTLE_SRC" > "$WORK/throttle.js"
+cat >> "$WORK/throttle.js" <<'EOF'
+module.exports = { create, push, take, hasPending, reset };
+EOF
+
 cat > "$WORK/test.js" <<'EOF'
 const m = require("./mapping.js");
+const t = require("./throttle.js");
 let fails = 0;
+function check(name, ok) {
+    if (ok) console.log(`ok   ${name}`);
+    else { fails++; console.log(`FAIL ${name}`); }
+}
 function eq(actual, expected, name) {
     const ok = Object.is(actual, expected) || Math.abs(actual - expected) < 1e-12;
     if (!ok) { fails++; console.log(`FAIL ${name}: got ${actual}, want ${expected}`); }
@@ -80,6 +96,42 @@ for (let i = 0; i <= 100; i++) {
     }
 }
 console.log("sweep 0..1 over font grid: clean");
+
+// --- write throttle: the drag must not write per pointer sample (v1.0.3) ---
+const th = t.create(40);
+eq(t.push(th, 0, 0.5), 0.5, "throttle leading sample is applied");
+eq(t.push(th, 8, 0.55), null, "throttle suppresses inside the window");
+eq(t.hasPending(th), true, "throttle remembers the suppressed sample");
+eq(t.push(th, 16, 0.6), null, "throttle keeps only the newest suppressed value");
+eq(t.take(th, 40), 0.6, "throttle trailing value is the newest one");
+eq(t.take(th, 41), null, "throttle trailing value is not replayed");
+eq(t.push(th, 80, 0.7), 0.7, "throttle emits again once the window passes");
+check("throttle never loses the last value of a drag", (() => {
+    const s = t.create(40);
+    let now = 0;
+    let last = null;
+    for (let i = 0; i < 200; i++) {
+        now += 7;
+        const v = 0.5 + i * 0.0075;
+        const out = t.push(s, now, v);
+        if (out !== null) last = out;
+    }
+    const trailing = t.take(s, now);
+    if (trailing !== null) last = trailing;
+    return Math.abs(last - (0.5 + 199 * 0.0075)) < 1e-12;
+})());
+check("throttle bounds the write rate", (() => {
+    const s = t.create(40);
+    let writes = 0;
+    for (let ms = 0; ms <= 1000; ms += 8) if (t.push(s, ms, ms) !== null) writes++;
+    return writes > 0 && writes <= 1000 / 40 + 2;
+})());
+eq(t.push(t.create(0), 5, 1), 1, "throttle interval 0 applies the first sample");
+eq(t.push(t.create(0), 5, 2), 2, "throttle interval 0 applies every sample");
+const rs = t.create(40);
+t.push(rs, 0, 1);
+t.reset(rs);
+eq(t.push(rs, 1, 2), 2, "throttle reset re-arms the leading edge");
 
 if (fails) { console.log(`${fails} FAILURES`); process.exit(1); }
 console.log("ALL SLIDER MAPPING TESTS PASSED");

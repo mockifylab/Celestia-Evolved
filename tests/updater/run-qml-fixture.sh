@@ -136,6 +136,27 @@ check "shell.qml updated" "// new shell" "$(cat "$HELPERS/install/shell.qml" 2>/
 [[ -f "$FIXTURE/cache/caelestia/updates/rollback.env" ]]
 check "rollback env written" 0 $?
 
+# --- A fresh session against the already-updated install dir ---------------
+# The in-session override is gone; only $HELPERS/install/VERSION (written by the
+# apply above) can tell this process what is installed. If it does not, the shell
+# falls back to the version compiled into the plugin and offers the release the
+# user has already installed -- the exact complaint this test pins shut.
+OUT2="$FIXTURE/harness_restart.out"
+env \
+    QT_QPA_PLATFORM=offscreen \
+    QML2_IMPORT_PATH="$SHELL_DIR/build/qml:${QML2_IMPORT_PATH:-/usr/lib/qt6/qml}" \
+    CAELESTIA_UPDATE_FEED="http://127.0.0.1:$PORT/releases.json" \
+    UPDATER_TEST_RESTART_ONLY=1 \
+    CAELESTIA_UPDATE_HELPER="$SHELL_DIR/assets/update/apply_update.sh" \
+    CAELESTIA_UPDATE_TARGET="$HELPERS/install" \
+    XDG_CACHE_HOME="$FIXTURE/cache2" \
+    timeout 60 qs -p "$PROJ/shell.qml" >"$OUT2" 2>&1
+echo "restart-session harness exit: $?"
+sed 's/^/  | /' "$OUT2"
+check_file "fresh session reads the installed version from disk" 'RESULT\|restart.*cur=1\.0\.1' "$OUT2"
+check_file "fresh session reports the installed release as current" 'RESULT\|restart.*state=upToDate' "$OUT2"
+check_file "installed release is not re-offered to a fresh session" 'RESULT\|restart.*avail=false' "$OUT2"
+
 echo
 echo "== result: $PASS passed, $FAIL failed =="
 [[ "$FAIL" -eq 0 ]]
