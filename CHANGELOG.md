@@ -3,6 +3,67 @@
 All notable changes to **Celestia Shell — Reimagined** are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.0.3]
+
+Performance release. Everything here is QML/JS only, so an in-app update to this
+version needs no rebuild. User-facing summary: `docs/releases/v1.0.3.md`.
+
+### Fixed
+
+- **Appearance settings blocked the shell while opening.** The page built a
+  `MenuItem` for every installed font family, twice, during construction
+  (1,955 families on the development machine). The family list is now enumerated
+  the first time a font row is opened, each row builds only its own items, and
+  `Variants` is no longer fed a thousand-entry model on page load.
+- **Menus realised every entry they held.** `Menu` now loads its content only
+  while expanded and presents it through a `ListView`, so only the visible rows
+  are created, and the popup is capped to the height of the surface it floats on
+  instead of running off screen.
+- **Sliders wrote one setting per pointer sample.** `SliderRow` coalesces writes
+  to one per `writeIntervalMs` (40 ms) through the shared
+  `utils/writeThrottle.js`, and always flushes the newest suppressed value, so
+  the released value is the saved one. The handle and track fill still follow the
+  pointer every frame. The bar's volume slider coalesces its Pipewire writes the
+  same way.
+- **Transparency changes rebuilt compositor blur rules ~33 times a second.**
+  `Colours` now debounces `layerrule` updates to 250 ms after the value settles
+  and skips them entirely when the payload is unchanged.
+- **Wallpaper previews decoded and analysed every row scrolled past.** Preview
+  colour analysis follows the settled selection (`Wallpapers.analysedWallpaper`),
+  and a palette result for a preview the user already closed no longer
+  resurrects it.
+- **A window-tag check compiled a regular expression per window per compositor
+  event.** `Hypr.isToplevelIgnored` now uses a cached lookup table.
+- **An installed release could look like it was still offered.** The Updates page
+  states plainly when the newest release is already installed, and shows the
+  running build when it differs from the installed version (the old process is
+  still in memory until the shell restarts).
+- **Release notes were unreadable in the app.** GitHub's generated notes (bullet
+  stars, `**Full Changelog**`) are replaced by curated per-release files, and the
+  in-app view renders them as clean prose via `modules/nexus/pages/releaseNotes.js`.
+
+### Added
+
+- `utils/writeThrottle.js` — clock-injected leading/trailing write throttle,
+  shared by settings sliders and the bar volume slider.
+- `modules/nexus/pages/releaseNotes.js` — markdown to plain-prose renderer for
+  the Updates page (headings, lists, links, images, fences, rules).
+- Fixtures: `tests/updater/run-notes-fixture.sh` (38 assertions), throttle
+  assertions in `tests/sliders/run-mapping-test.sh`, and a fresh-session phase in
+  `tests/updater/run-qml-fixture.sh` proving an installed release is reported as
+  current by a new process rather than re-offered.
+- Release tarballs carry `VERSION`; `nix/default.nix` remains authoritative for
+  nix installs.
+
+### Verified
+
+Runtime measurement in the isolated nested-Hyprland session, same machine,
+alternating page navigation: the v1.0.2 tree blocked for 3,905–7,996 ms per
+navigation involving the Appearance page; the v1.0.3 tree takes 105–258 ms. Zero
+QML errors in the session log. All eight local gates pass (qmlformat byte
+equality, convention lint, `bash -n`, slider/throttle, updater helper, updater
+QML, palette and release-note fixtures).
+
 ## [1.0.2]
 
 Maintenance release. Full work log: `V1.0.2_CHANGELOG.md`, verification matrix:
@@ -12,7 +73,7 @@ Maintenance release. Full work log: `V1.0.2_CHANGELOG.md`, verification matrix:
 
 - **Every settings slider.** Value, handle position, track fill, the applied
   setting and the saved value now come from one shared mapping library
-  (`utils/sliderMapping.js`): correct ranges/steps, exact endpoints, no float
+  (`modules/nexus/common/sliderMapping.js`): correct ranges/steps, exact endpoints, no float
   drift, correct percent↔fraction handling, and clicks near the ends reach the
   minimum/maximum. Affected surfaces include Motion, Appearance, Panels/Taskbar,
   Hyprland, Audio and Services.

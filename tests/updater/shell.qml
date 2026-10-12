@@ -43,6 +43,18 @@ ShellRoot {
     function start(): void {
         Updater.refreshRollbackStatus();
 
+        // Phase 0 (separate process): a shell session started against an
+        // install directory that a *previous* session already updated. There is
+        // no in-session override here; only the VERSION file on disk can say
+        // what is installed. This is the exact situation the user hit after
+        // installing an update, so it is tested as its own run.
+        if (Quickshell.env("UPDATER_TEST_RESTART_ONLY") === "1") {
+            root.liveFeedOverride = Updater.feedOverride;
+            root.phase = 9;
+            Updater.check();
+            return;
+        }
+
         // Phase 1: unreachable feed must surface a clean error state. The live
         // fixture feed arrives via CAELESTIA_UPDATE_FEED (feedOverride's init).
         root.liveFeedOverride = Updater.feedOverride;
@@ -68,6 +80,14 @@ ShellRoot {
 
             if (root.phase === 4 && Updater.state === "upToDate") {
                 root.emit("recheck");
+                Qt.exit(0);
+            }
+
+            // Phase 9: fresh process, already-updated install dir. Whatever the
+            // compiled version says, the installed release is current and must
+            // not be offered again.
+            if (root.phase === 9 && (Updater.state === "upToDate" || Updater.state === "available" || Updater.state === "error")) {
+                root.emit("restart");
                 Qt.exit(0);
             }
 

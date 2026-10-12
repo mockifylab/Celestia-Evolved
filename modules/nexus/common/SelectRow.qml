@@ -18,6 +18,10 @@ ConnectedRect {
     property alias menuOnTop: splitButton.menuOnTop
 
     signal selected(item: MenuItem)
+    // Emitted when the user opens the list. Pages with expensive models (the
+    // font pickers hold every family installed on the system) build them here
+    // instead of at page load.
+    signal opened
 
     Layout.fillWidth: true
     implicitHeight: rowLayout.implicitHeight + rowLayout.anchors.margins * 2
@@ -59,6 +63,8 @@ ConnectedRect {
             id: splitButton
 
             type: SplitButton.Tonal
+            onExpandedChanged: if (expanded)
+                root.opened()
             stateLayer.onClicked: splitButton.expanded = !splitButton.expanded
             menu.onItemSelected: item => root.selected(item)
         }

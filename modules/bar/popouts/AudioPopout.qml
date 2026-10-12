@@ -9,14 +9,45 @@ import Caelestia.I18n
 import qs.components
 import qs.components.controls
 import qs.services
+import "../../../utils/writeThrottle.js" as WriteThrottle
 
 Item {
     id: root
 
     required property PopoutState popouts
 
+    // A volume drag emits one sample per pointer move, and every sample used to
+    // become a Pipewire round trip. The first sample is applied at once and the
+    // newest suppressed one is flushed when the drag pauses, so the final volume
+    // always lands. Wheel and key repeats are untouched.
+    property var volumeWriteState: WriteThrottle.create(40)
+
+    function pushVolume(value: real): void {
+        const state = root.volumeWriteState;
+        const immediate = WriteThrottle.push(state, Date.now(), value);
+        if (immediate !== null)
+            Audio.setVolume(immediate);
+        else if (!volumeFlush.running)
+            volumeFlush.restart();
+    }
+
     implicitWidth: Tokens.sizes.bar.audioWidth
     implicitHeight: layout.implicitHeight + Tokens.padding.medium * 2
+
+    Timer {
+        id: volumeFlush
+
+        interval: 40
+        onTriggered: {
+            const state = root.volumeWriteState;
+            const trailing = WriteThrottle.take(state, Date.now());
+            if (trailing === null)
+                return;
+            Audio.setVolume(trailing);
+            if (WriteThrottle.hasPending(state))
+                volumeFlush.restart();
+        }
+    }
 
     ButtonGroup {
         id: sinks
@@ -98,7 +129,7 @@ Item {
                 implicitHeight: parent.implicitHeight
 
                 value: Audio.volume
-                onInteraction: value => Audio.setVolume(value)
+                onInteraction: value => root.pushVolume(value)
             }
         }
 

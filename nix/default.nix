@@ -33,10 +33,10 @@
   withCli ? false,
   extraRuntimeDeps ? [],
 }: let
-  # Keep in step with the released tag (v1.0.2). The CMake build falls back to
+  # Keep in step with the released tag. The CMake build falls back to
   # `git describe`, which a nix source copy has no access to, so this is the
   # authoritative version for nix installs.
-  version = "1.0.2";
+  version = "1.0.3";
 
   qs = quickshell.withModules [qt6.qtimageformats m3shapes];
 

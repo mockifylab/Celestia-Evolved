@@ -22,6 +22,14 @@ Searcher {
     property bool previewColourLock
     property bool pendingPreviewClear
 
+    // Colour analysis is the expensive part of a preview: it decodes an image
+    // and regenerates a full palette. Holding an arrow key steps through a dozen
+    // wallpapers a second, so analysis follows the selection the user settles on
+    // instead of every intermediate step. The preview image itself stays instant.
+    property string analysedPreviewPath
+    property int previewAnalysisDelayMs: 150
+    readonly property string analysedWallpaper: showPreview && analysedPreviewPath !== "" ? analysedPreviewPath : actualCurrent
+
     function getCategoryFor(w: FileSystemEntry): string {
         let category = w.parentDir.slice(Paths.wallsdir.length + 1);
         if (category.includes("/"))
@@ -48,11 +56,20 @@ Searcher {
     function preview(path: string): void {
         previewPath = path;
         showPreview = true;
+        previewAnalysisTimer.restart();
+    }
 
-        Colours.previewWallpaper(path);
+    // Runs for the settled selection only: the last wallpaper the cursor rested
+    // on, not the ones scrolled past on the way there.
+    function runPreviewAnalysis(): void {
+        if (!showPreview || previewPath === "")
+            return;
+        analysedPreviewPath = previewPath;
+        Colours.previewWallpaper(previewPath);
     }
 
     function stopPreview(): void {
+        previewAnalysisTimer.stop();
         showPreview = false;
         if (previewColourLock)
             pendingPreviewClear = true;
@@ -71,6 +88,13 @@ Searcher {
     extraOpts: useFuzzy ? ({}) : ({
             forward: false
         })
+
+    Timer {
+        id: previewAnalysisTimer
+
+        interval: root.previewAnalysisDelayMs
+        onTriggered: root.runPreviewAnalysis()
+    }
 
     IpcHandler {
         function get(): string {

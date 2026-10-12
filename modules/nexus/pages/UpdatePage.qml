@@ -9,16 +9,29 @@ import qs.components
 import qs.components.controls
 import qs.services
 import qs.modules.nexus.common
+import "releaseNotes.js" as ReleaseNotes
 
 PageBase {
     id: root
+
+    // Release notes arrive as GitHub markdown. Shown raw they read as asterisks,
+    // backticks and comment markers, so the page renders the same content as
+    // clean text (utils in releaseNotes.js, unit tested).
+    readonly property string notesText: ReleaseNotes.plain(Updater.releaseNotes)
+    readonly property string confirmText: ReleaseNotes.upToDate(Updater.currentVersion, Updater.latestVersion)
+
+    // The page must never look like an update is on offer when one is not, so
+    // the available-release details are shown only for a real update; notes stay
+    // readable on demand.
+    property bool notesRequested: false
+    readonly property bool showNotes: root.notesText !== "" && (Updater.updateAvailable || root.notesRequested)
 
     readonly property string stateText: {
         switch (Updater.state) {
         case "checking":
             return Tr.tr("Checking for updates…");
         case "upToDate":
-            return Tr.tr("You are up to date");
+            return Tr.tr("System is up to date");
         case "available":
             return Tr.tr("Update available");
         case "downloading":
@@ -30,7 +43,7 @@ PageBase {
         case "applying":
             return Tr.tr("Applying update…");
         case "applied":
-            return Tr.tr("Update applied");
+            return Tr.tr("Update installed");
         case "rollingBack":
             return Tr.tr("Rolling back…");
         case "error":
@@ -66,6 +79,12 @@ PageBase {
         return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
     }
 
+    function notesHeading(): string {
+        if (Updater.updateAvailable && Updater.latestVersion !== "")
+            return Tr.tr(`What's new in v${Updater.latestVersion}`);
+        return Tr.tr("Release notes");
+    }
+
     title: Tr.tr("Updates")
 
     Component.onCompleted: Updater.refreshRollbackStatus()
@@ -97,7 +116,7 @@ PageBase {
                     spacing: Tokens.spacing.small
 
                     MaterialIcon {
-                        text: Updater.busy ? "sync" : "system_update"
+                        text: Updater.busy ? "sync" : (Updater.state === "upToDate" ? "check_circle" : "system_update")
                         color: root.statusColour
                         fontStyle: Tokens.font.icon.large
                     }
@@ -111,12 +130,23 @@ PageBase {
                     }
                 }
 
+                // Plain confirmation, so "up to date" is never mistaken for an
+                // update prompt: it names the installed version explicitly.
+                StyledText {
+                    visible: Updater.state === "upToDate" && root.confirmText !== ""
+                    Layout.fillWidth: true
+                    wrapMode: Text.WordWrap
+                    text: root.confirmText
+                    color: root.statusColour
+                    font: Tokens.font.body.small
+                }
+
                 StyledText {
                     visible: Updater.message !== ""
                     Layout.fillWidth: true
                     wrapMode: Text.WordWrap
                     text: Updater.message
-                    color: Colours.palette.m3onSurfaceVariant
+                    color: Updater.state === "error" ? Colours.palette.m3error : Colours.palette.m3onSurfaceVariant
                     font: Tokens.font.body.small
                 }
             }
@@ -134,14 +164,26 @@ PageBase {
         }
 
         InfoRow {
-            label: Tr.tr("Latest")
+            // Only shown when there is genuinely something newer to install;
+            // an up-to-date system shows one version, not two.
+            visible: Updater.updateAvailable
+            label: Tr.tr("Available update")
             value: Updater.latestVersion !== "" ? `v${Updater.latestVersion}` : "—"
         }
 
         InfoRow {
+            // The release the running shell was built from, when it differs from
+            // what is installed on disk: honest about a session that still needs
+            // a restart to pick up what was just applied.
+            visible: Updater.compiledVersion !== "" && Updater.compiledVersion !== Updater.currentVersion
+            label: Tr.tr("Running build")
+            value: `v${Updater.compiledVersion}`
+        }
+
+        InfoRow {
             // Genuine asset size from the release feed; hidden when the feed
-            // does not advertise one.
-            visible: Updater.downloadSize > 0
+            // does not advertise one or nothing is offered.
+            visible: Updater.updateAvailable && Updater.downloadSize > 0
             label: Tr.tr("Download size")
             value: root.sizeStr(Updater.downloadSize)
         }
@@ -154,22 +196,22 @@ PageBase {
 
         // Release notes
         SectionHeader {
-            visible: Updater.releaseNotes !== ""
-            text: Tr.tr("Release notes")
+            visible: root.showNotes
+            text: root.notesHeading()
         }
 
         ConnectedRect {
-            visible: Updater.releaseNotes !== ""
+            visible: root.showNotes
             Layout.fillWidth: true
-            implicitHeight: notesScroll.implicitHeight + Tokens.padding.large * 2
+            implicitHeight: notesText.implicitHeight + Tokens.padding.large * 2
 
             StyledText {
-                id: notesScroll
+                id: notesText
 
                 anchors.fill: parent
                 anchors.margins: Tokens.padding.large
                 wrapMode: Text.WordWrap
-                text: Updater.releaseNotes
+                text: root.notesText
                 color: Colours.palette.m3onSurfaceVariant
                 font: Tokens.font.body.small
             }
@@ -204,6 +246,19 @@ PageBase {
                     if (Updater.state === "available")
                         Updater.download();
                 }
+            }
+
+            // Up to date: notes are still interesting, but they are opt-in so
+            // the page does not read as an update offer.
+            IconTextButton {
+                visible: root.notesText !== "" && !Updater.updateAvailable
+                icon: root.notesRequested ? "expand_less" : "expand_more"
+                text: root.notesRequested ? Tr.tr("Hide release notes") : Tr.tr("Read release notes")
+                font: Tokens.font.body.large
+                isRound: true
+                shapeMorph: true
+                type: IconTextButton.Text
+                onClicked: root.notesRequested = !root.notesRequested
             }
 
             IconTextButton {

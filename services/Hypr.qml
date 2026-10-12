@@ -38,6 +38,13 @@ Singleton {
 
     property string lastSpecialWorkspace: ""
 
+    // Last ignore list turned into a lookup table, kept so that compositor
+    // events do not rebuild it. Keyed by the joined contents.
+    property var ignoredTagCache: ({
+            key: "",
+            set: null
+        })
+
     // Hyprland removed the minimize dispatcher; minimize is emulated by parking
     // windows in a dedicated special workspace, remembering where they came from.
     readonly property string minimizeWorkspace: "special:minimized"
@@ -168,7 +175,35 @@ Singleton {
         if (!ipc?.class || !ipc.mapped)
             return true;
 
-        return ipc.tags?.some(tag => ignoredTags.includes(tag.replace(/\*$/, ""))) ?? false;
+        if (!ipc.tags?.length)
+            return false;
+
+        // This runs for every toplevel on every compositor event, so the ignore
+        // set is normalised once per tag list and reused instead of rebuilding a
+        // regular expression per tag per window.
+        const blocked = root.ignoredTagSet(ignoredTags);
+        if (!blocked)
+            return false;
+
+        return ipc.tags.some(tag => blocked[tag.endsWith("*") ? tag.slice(0, -1) : tag] === true);
+    }
+
+    // Cached lookup table for an ignore list, keyed by its contents. Entries are
+    // stored exactly as configured, matching the previous includes() behaviour.
+    function ignoredTagSet(ignoredTags) {
+        const key = ignoredTags?.join("|") ?? "";
+        if (key === "")
+            return null;
+        if (root.ignoredTagCache.key === key)
+            return root.ignoredTagCache.set;
+        const set = {};
+        for (const tag of ignoredTags)
+            set[tag] = true;
+        root.ignoredTagCache = {
+            key: key,
+            set: set
+        };
+        return root.ignoredTagCache.set;
     }
 
     function reloadDynamicConfs(): void {
