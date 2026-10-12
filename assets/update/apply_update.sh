@@ -12,7 +12,10 @@
 #   verify   <file> <expected_sha256> Check SHA-256; exit 0 ok / 3 mismatch.
 #   compare  <a> <b>                  Print -1|0|1 for semver a<=>b.
 #   extract  <tarball> <dir>          Extract a release tarball into <dir>.
-#   apply    <staged> <install> <meta>Back up <install>, then activate <staged>.
+#   apply    <staged> <install> <meta> [<version>]
+#                                       Back up <install>, activate <staged>,
+#                                       and register <version> as the installed
+#                                       version (written to <install>/VERSION).
 #   rollback <install> <meta>         Restore the last backup made by `apply`.
 #   status   <meta>                   Print current rollback availability as KV.
 #
@@ -162,7 +165,7 @@ cmd_extract() {
 }
 
 cmd_apply() {
-    local staged="${1:-}" install="${2:-}" meta="${3:-}"
+    local staged="${1:-}" install="${2:-}" meta="${3:-}" version="${4:-}"
     [[ -n "$staged" && -n "$install" && -n "$meta" ]] || usage
     [[ -d "$staged" ]] || { EXITCODE=5 die "staged dir missing: $staged"; }
     [[ -d "$install" ]] || { EXITCODE=5 die "install dir missing: $install"; }
@@ -177,6 +180,7 @@ cmd_apply() {
         echo "rollback_path=$backup"
         echo "install=$install"
         echo "applied_from=$staged"
+        echo "applied_version=$version"
         echo "applied_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     } >"$meta/rollback.env"
 
@@ -192,6 +196,15 @@ cmd_apply() {
         rsync -ac --delete "$backup/" "$install/" || die "apply failed AND restore failed"
         die "apply failed; restored previous version"
     }
+
+    # Register the installed version as authoritative metadata. This is the
+    # single source of truth the shell reads at startup (Updater.currentVersion
+    # prefers it over the version compiled into the C++ plugin, which a
+    # source-only update cannot change).
+    if [[ -n "$version" ]]; then
+        printf '%s\n' "$version" >"$install/VERSION" || die "apply ok but version registration failed"
+        echo "registered version $version"
+    fi
     echo "applied"
 }
 

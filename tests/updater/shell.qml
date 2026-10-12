@@ -60,6 +60,14 @@ ShellRoot {
             // Phase 3: the whole download->verify->extract->apply chain ran.
             if (root.phase === 3 && Updater.state === "applied") {
                 root.emit("final");
+                // Phase 4: re-check after a successful install. The registered
+                // version must make the same release no longer available.
+                root.phase = 4;
+                Updater.check();
+            }
+
+            if (root.phase === 4 && Updater.state === "upToDate") {
+                root.emit("recheck");
                 Qt.exit(0);
             }
 

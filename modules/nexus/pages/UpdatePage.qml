@@ -54,6 +54,18 @@ PageBase {
         }
     }
 
+    // Human-readable byte count for the release asset size (spec: show the
+    // download size when the feed provides reliable metadata).
+    function sizeStr(bytes: int): string {
+        if (bytes <= 0)
+            return "—";
+        if (bytes < 1024)
+            return `${bytes} B`;
+        if (bytes < 1024 * 1024)
+            return `${Math.round(bytes / 1024)} KB`;
+        return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    }
+
     title: Tr.tr("Updates")
 
     Component.onCompleted: Updater.refreshRollbackStatus()
@@ -124,6 +136,14 @@ PageBase {
         InfoRow {
             label: Tr.tr("Latest")
             value: Updater.latestVersion !== "" ? `v${Updater.latestVersion}` : "—"
+        }
+
+        InfoRow {
+            // Genuine asset size from the release feed; hidden when the feed
+            // does not advertise one.
+            visible: Updater.downloadSize > 0
+            label: Tr.tr("Download size")
+            value: root.sizeStr(Updater.downloadSize)
         }
 
         InfoRow {

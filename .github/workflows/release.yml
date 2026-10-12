@@ -24,6 +24,10 @@ jobs:
           mkdir -p ".release/$RELEASE_NAME"
           rsync -av --exclude={'.*',nix,flake.lock,flake.nix} . ".release/$RELEASE_NAME"
           echo "$GITHUB_SHA" > ".release/$RELEASE_NAME/REVISION"
+          # Authoritative installed-version metadata: the in-app updater reads
+          # <install>/VERSION after activation, so a source-tarball install is
+          # self-describing without rebuilding the C++ plugin.
+          echo "${GITHUB_REF_NAME#v}" > ".release/$RELEASE_NAME/VERSION"
           tar -C .release -czf "$RELEASE_NAME.tar.gz" "$RELEASE_NAME"
           cp "$RELEASE_NAME.tar.gz" caelestia-shell-latest.tar.gz
           # Publish a SHA-256 digest the in-app updater can verify against.

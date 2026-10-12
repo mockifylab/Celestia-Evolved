@@ -105,6 +105,17 @@ check "rollback restored shell.qml" 0 "$(grep -q "old shell" "$FIXTURE/install/s
 # --- rollback without backup ---
 run "rollback without backup fails" 4 "$SCRIPT" rollback "$FIXTURE/install" "$FIXTURE/nometa"
 
+# --- apply with explicit version registers installed metadata (v1.0.2) ---
+# Simulates a payload WITHOUT a VERSION file (older release assets): the fourth
+# argument must write <install>/VERSION so the shell can self-report it.
+mkdir -p "$FIXTURE/staged_v2" "$FIXTURE/install_v2"
+echo "// v2 shell" >"$FIXTURE/staged_v2/shell.qml"
+run "apply with version" 0 "$SCRIPT" apply "$FIXTURE/staged_v2" "$FIXTURE/install_v2" "$FIXTURE/meta_v2" "1.0.2"
+check "apply wrote VERSION from arg" 0 "$([[ "$(cat "$FIXTURE/install_v2/VERSION")" == "1.0.2" ]] && echo 0 || echo 1)"
+check "rollback env records version" 0 "$(grep -q 'applied_version=1.0.2' "$FIXTURE/meta_v2/rollback.env" && echo 0 || echo 1)"
+run "rollback v2 restores (drops VERSION)" 0 "$SCRIPT" rollback "$FIXTURE/install_v2" "$FIXTURE/meta_v2"
+check "rollback v2 removed registered VERSION" 0 "$([[ ! -f "$FIXTURE/install_v2/VERSION" || "$(cat "$FIXTURE/install_v2/VERSION")" != "1.0.2" ]] && echo 0 || echo 1)"
+
 # --- nested tarball (GitHub-style single top-level dir) must flatten ---
 mkdir -p "$FIXTURE/nest/caelestia-shell-v1.0.2"
 echo 'v1.0.2' >"$FIXTURE/nest/caelestia-shell-v1.0.2/VERSION"
