@@ -20,12 +20,19 @@ Item {
     required property Item utilitiesPanel
     readonly property int padding: Tokens.padding.large
     readonly property int clampedPadding: CUtils.clamp(padding - Config.border.thickness, 0, padding)
+    readonly property int screenWidth: (QsWindow.window as QsWindow)?.screen?.width ?? Tokens.sizes.notifs.width
+    readonly property int screenHeight: (QsWindow.window as QsWindow)?.screen?.height ?? 0
+    // User-configured dimensions with sane limits; 0 keeps the theme default / auto height.
+    readonly property int panelWidth: CUtils.clamp(GlobalConfig.notifs.width > 0 ? GlobalConfig.notifs.width : Tokens.sizes.notifs.width, 240, Math.max(240, Math.round(screenWidth * 0.9)))
+    readonly property int maxHeightLimit: GlobalConfig.notifs.maxHeight > 0 ? CUtils.clamp(GlobalConfig.notifs.maxHeight, 160, Math.max(160, screenHeight)) : screenHeight
+    readonly property bool placementBottom: GlobalConfig.notifs.placement === NotifPlacement.BottomLeft || GlobalConfig.notifs.placement === NotifPlacement.Bottom || GlobalConfig.notifs.placement === NotifPlacement.BottomRight
+    readonly property bool placementLeft: GlobalConfig.notifs.placement === NotifPlacement.TopLeft || GlobalConfig.notifs.placement === NotifPlacement.BottomLeft
 
     anchors.top: parent.top
     anchors.bottom: parent.bottom
     anchors.right: parent.right
 
-    implicitWidth: Tokens.sizes.notifs.width
+    implicitWidth: panelWidth
     implicitHeight: {
         const count = list.count;
         if (count === 0)
@@ -35,20 +42,28 @@ Item {
         for (let i = 0; i < count; i++)
             height += (list.itemAtIndex(i) as NotifWrapper)?.nonAnimHeight ?? 0;
 
-        if (screenState.osd) {
-            const h = osdPanel.y - clampedPadding;
-            if (height > h)
-                height = h;
-        }
+        height = Math.min(height, maxHeightLimit);
+        if (!placementBottom) {
+            if (screenState.osd) {
+                const h = osdPanel.y - clampedPadding;
+                if (height > h)
+                    height = h;
+            }
 
-        if (screenState.session) {
-            const h = sessionPanel.y - clampedPadding;
-            if (height > h)
-                height = h;
-        }
+            if (screenState.session) {
+                const h = sessionPanel.y - clampedPadding;
+                if (height > h)
+                    height = h;
+            }
 
-        if (screenState.utilities) {
-            const h = ((QsWindow.window as QsWindow)?.screen.height ?? 0) - (utilitiesPanel as Utilities.Wrapper).nonAnimHeight - Config.border.thickness * 2 - padding * 2 - Tokens.spacing.extraLarge;
+            if (screenState.utilities) {
+                const h = ((QsWindow.window as QsWindow)?.screen.height ?? 0) - (utilitiesPanel as Utilities.Wrapper).nonAnimHeight - Config.border.thickness * 2 - padding * 2 - Tokens.spacing.extraLarge;
+                if (height > h)
+                    height = h;
+            }
+        } else if (screenState.utilities) {
+            // Bottom-anchored stack must stop above the open utilities panel
+            const h = screenHeight - (utilitiesPanel as Utilities.Wrapper).nonAnimHeight - Config.border.thickness * 2 - padding * 2 - Tokens.spacing.extraLarge;
             if (height > h)
                 height = h;
         }
@@ -184,7 +199,7 @@ Item {
             Anim {
                 target: notif
                 property: "x"
-                to: (notif.x >= 0 ? root.implicitWidth : -root.implicitWidth) * 2
+                to: (root.placementLeft ? -1 : 1) * root.implicitWidth * 2
                 duration: Tokens.anim.durations.normal
                 easing: Tokens.anim.emphasized
             }
@@ -208,6 +223,7 @@ Item {
                 id: notif
 
                 modelData: wrapper.modelData
+                slideFromLeft: root.placementLeft
                 implicitWidth: root.implicitWidth - root.padding - root.clampedPadding
             }
         }

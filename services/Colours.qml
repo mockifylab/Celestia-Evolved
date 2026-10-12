@@ -83,7 +83,25 @@ Singleton {
     }
 
     function setMode(mode: string): void {
-        Quickshell.execDetached(["caelestia", "scheme", "set", "--notify", "-m", mode]);
+        GlobalConfig.appearance.colors.mode = mode;
+        if (GlobalConfig.appearance.colors.customEnabled)
+            root.applyCustom();
+        else
+            applyWallpaper(Wallpapers.actualCurrent);
+    }
+
+    // Generate palette from a wallpaper image using the built-in ImageAnalyser.
+    // Falls back to the last valid theme if extraction fails.
+    function applyWallpaper(path: string): void {
+        if (!path)
+            return;
+        wallpaperAnalyser.source = path;
+    }
+
+    function previewWallpaper(path: string): void {
+        if (!path)
+            return;
+        previewAnalyser.source = path;
     }
 
     // Generate the full M3 palette from the configured seed and write it into the
@@ -93,7 +111,15 @@ Singleton {
         if (!c.customEnabled)
             return;
 
-        const light = c.mode === "light" ? true : c.mode === "dark" ? false : root.currentLight;
+        let light;
+        if (c.mode === "light")
+            light = true;
+        else if (c.mode === "dark")
+            light = false;
+        else
+            // auto: derive from wallpaper luminance (>0.5 → light)
+            light = analyser.luminance > 0.5;
+
         root.currentLight = light;
 
         const roles = ColorGen.roles(c.seed, light);
@@ -134,8 +160,10 @@ Singleton {
             if (GlobalConfig.appearance.colors.customEnabled) {
                 root.applyCustom();
             } else {
-                // Reverting to the standard scheme.json / CLI behaviour.
+                // Try reloading scheme.json (upstream path); if unavailable, use wallpaper
                 schemeFile.reload();
+                if (root.scheme !== "dynamic")
+                    root.applyWallpaper(Wallpapers.actualCurrent);
             }
         }
 
@@ -148,6 +176,16 @@ Singleton {
         }
 
         target: GlobalConfig.appearance.colors
+    }
+
+    // Re-evaluate auto mode when wallpaper luminance changes
+    Connections {
+        function onLuminanceChanged(): void {
+            if (GlobalConfig.appearance.colors.customEnabled && GlobalConfig.appearance.colors.mode === "auto")
+                root.applyCustom();
+        }
+
+        target: analyser
     }
 
     Connections {
@@ -163,14 +201,68 @@ Singleton {
 
         path: `${Paths.state}/scheme.json`
         watchChanges: true
+        printErrors: false
         onFileChanged: reload()
         onLoaded: root.load(text(), false)
+        onLoadFailed: {
+            // scheme.json unavailable (no caelestia CLI): derive from wallpaper
+            if (!GlobalConfig.appearance.colors.customEnabled)
+                root.applyWallpaper(Wallpapers.actualCurrent);
+        }
     }
 
     ImageAnalyser {
         id: analyser
 
         source: Wallpapers.current
+    }
+
+    // Separate analysers for applying and previewing wallpaper-derived colours
+    ImageAnalyser {
+        id: wallpaperAnalyser
+
+        onDominantColourChanged: {
+            const seed = ColorGen.toHex(dominantColour);
+            const mode = GlobalConfig.appearance.colors.mode;
+            let light;
+            if (mode === "light")
+                light = true;
+            else if (mode === "dark")
+                light = false;
+            else
+                light = analyser.luminance > 0.5;
+            root.currentLight = light;
+            const roles = ColorGen.roles(seed, light);
+            for (const [name, colour] of Object.entries(roles)) {
+                if (root.current.hasOwnProperty(name))
+                    root.current[name] = colour;
+            }
+            root.scheme = "dynamic";
+        }
+    }
+
+    ImageAnalyser {
+        id: previewAnalyser
+
+        onDominantColourChanged: {
+            const seed = ColorGen.toHex(dominantColour);
+            const mode = GlobalConfig.appearance.colors.mode;
+            let light;
+            if (mode === "light")
+                light = true;
+            else if (mode === "dark")
+                light = false;
+            else
+                light = analyser.luminance > 0.5;
+            root.previewLight = light;
+            const roles = ColorGen.roles(seed, light);
+            for (const [name, colour] of Object.entries(roles)) {
+                if (root.preview.hasOwnProperty(name))
+                    root.preview[name] = colour;
+            }
+            root.showPreview = true;
+            Wallpapers.previewColourLock = false;
+        }
     }
 
     Timer {

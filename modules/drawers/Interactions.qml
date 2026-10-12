@@ -22,6 +22,7 @@ CustomMouseArea {
     property bool dashboardShortcutActive
     property bool osdShortcutActive
     property bool utilitiesShortcutActive
+    readonly property bool notifAtTop: GlobalConfig.notifs.placement === NotifPlacement.TopLeft || GlobalConfig.notifs.placement === NotifPlacement.Top || GlobalConfig.notifs.placement === NotifPlacement.TopRight
 
     function withinPanelHeight(panel: Item, x: real, y: real): bool {
         const panelY = root.borderThickness + panel.y;
@@ -135,7 +136,7 @@ CustomMouseArea {
 
             // Show sidebar on hover (top-right corner, bounded by notification panel height)
             if (Config.sidebar.showOnHover) {
-                const sidebarTriggerY = Math.max(Config.sidebar.minHoverThreshold, panels.notifications.y + panels.notifications.height + borderThickness);
+                const sidebarTriggerY = root.notifAtTop ? Math.max(Config.sidebar.minHoverThreshold, panels.notifications.y + panels.notifications.height + borderThickness) : Config.sidebar.minHoverThreshold;
                 const showSidebarHover = x > Math.min(width - Config.border.minThickness, bar.implicitWidth + panels.sidebar.x) && y <= sidebarTriggerY;
                 if (showSidebarHover && !screenState.sidebar)
                     screenState.sidebar = true;
@@ -180,7 +181,7 @@ CustomMouseArea {
 
             // Show/hide sidebar on hover
             if (Config.sidebar.showOnHover && !pressed) {
-                const sidebarTriggerY = Math.max(Config.sidebar.minHoverThreshold, panels.notifications.y + panels.notifications.height + borderThickness);
+                const sidebarTriggerY = root.notifAtTop ? Math.max(Config.sidebar.minHoverThreshold, panels.notifications.y + panels.notifications.height + borderThickness) : Config.sidebar.minHoverThreshold;
                 const showSidebarHover = x > Math.min(width - Config.border.minThickness, bar.implicitWidth + panels.sidebar.x) && y <= sidebarTriggerY;
                 if (showSidebarHover && !screenState.sidebar) {
                     screenState.sidebar = true;

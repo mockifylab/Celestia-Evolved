@@ -21,27 +21,44 @@ PageBase {
 
     readonly property list<MenuItem> accelItems: [
         MenuItem {
+            text: Tr.tr("Default")
+            value: ""
+        },
+        MenuItem {
             text: Tr.tr("Adaptive")
-            value: 0
+            value: "adaptive"
         },
         MenuItem {
             text: Tr.tr("Linear")
-            value: 1
+            value: "flat"
         },
         MenuItem {
             text: Tr.tr("Legacy")
-            value: 2
+            value: "legacy"
         }
     ]
 
     function opt(key: string, def: real): real {
         const v = root.opts[key];
-        return (v === undefined || v === null) ? def : Number(v);
+        if (v === undefined || v === null || v === "[[EMPTY]]")
+            return def;
+        // Multi-value options (gaps) come back as "N N N N".
+        const n = Number(String(v).split(" ")[0]);
+        return Number.isNaN(n) ? def : n;
+    }
+
+    function optStr(key: string, def: string): string {
+        const v = root.opts[key];
+        if (v === undefined || v === null || v === "[[EMPTY]]")
+            return def;
+        return String(v);
     }
 
     function optBool(key: string, def: bool): bool {
         const v = root.opts[key];
-        return (v === undefined || v === null) ? def : Number(v) !== 0;
+        if (v === undefined || v === null || v === "[[EMPTY]]")
+            return def;
+        return Number(v) !== 0;
     }
 
     function setOpt(key: string, value: var): void {
@@ -246,11 +263,11 @@ PageBase {
             first: true
             icon: "tune"
             label: Tr.tr("Mouse sensitivity")
-            valueLabel: root.opt("input:sensitivity", 1).toFixed(2)
-            from: 0.1
-            to: 2
+            valueLabel: root.opt("input:sensitivity", 0).toFixed(2)
+            from: -1
+            to: 1
             stepSize: 0.05
-            value: root.opt("input:sensitivity", 1)
+            value: root.opt("input:sensitivity", 0)
             onMoved: v => root.setOpt("input:sensitivity", v)
         }
 
@@ -273,7 +290,7 @@ PageBase {
             label: Tr.tr("Pointer acceleration")
             subtext: Tr.tr("How cursor speed responds to movement")
             menuItems: root.accelItems
-            active: root.accelItems.find(i => i.value === Math.round(root.opt("input:accel_profile", 0))) ?? null
+            active: root.accelItems.find(i => i.value === root.optStr("input:accel_profile", "")) ?? null
             onSelected: item => root.setOpt("input:accel_profile", item.value)
         }
 

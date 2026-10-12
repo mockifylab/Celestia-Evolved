@@ -118,7 +118,7 @@ PageBase {
         InfoRow {
             first: true
             label: Tr.tr("Installed")
-            value: `v${Updater.currentVersion}` || "…"
+            value: Updater.currentVersion !== "" ? `v${Updater.currentVersion}` : "—"
         }
 
         InfoRow {

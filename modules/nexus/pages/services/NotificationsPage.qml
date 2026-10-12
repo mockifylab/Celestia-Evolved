@@ -37,6 +37,34 @@ PageBase {
     ]
     readonly property list<string> toastFullscreenValues: ["off", "important", "all"]
 
+    // Popup panel placement, ordered to match config::NotifPlacement
+    readonly property list<MenuItem> placementItems: [
+        MenuItem {
+            text: Tr.trCtx("Top left", "notification panel placement")
+            icon: "align_top_left"
+        },
+        MenuItem {
+            text: Tr.trCtx("Top center", "notification panel placement")
+            icon: "align_horizontal_center"
+        },
+        MenuItem {
+            text: Tr.trCtx("Top right", "notification panel placement")
+            icon: "align_top_right"
+        },
+        MenuItem {
+            text: Tr.trCtx("Bottom left", "notification panel placement")
+            icon: "align_bottom_left"
+        },
+        MenuItem {
+            text: Tr.trCtx("Bottom center", "notification panel placement")
+            icon: "align_horizontal_center"
+        },
+        MenuItem {
+            text: Tr.trCtx("Bottom right", "notification panel placement")
+            icon: "align_bottom_right"
+        }
+    ]
+
     title: Tr.tr("Notifications")
     isSubPage: true
 
@@ -87,7 +115,6 @@ PageBase {
         }
 
         StepperRow {
-            last: true
             label: Tr.tr("Group preview count")
             subtext: Tr.tr("Notifications shown per group before collapsing")
             value: GlobalConfig.notifs.groupPreviewNum
@@ -95,6 +122,43 @@ PageBase {
             to: 10
             stepSize: 1
             onMoved: v => GlobalConfig.notifs.groupPreviewNum = Math.round(v)
+        }
+
+        // Popup panel
+        SectionHeader {
+            text: Tr.tr("Popup panel")
+        }
+
+        SelectRow {
+            first: true
+            label: Tr.tr("Placement")
+            subtext: Tr.tr("Where notification popups appear on screen")
+            menuItems: root.placementItems
+            active: root.placementItems[GlobalConfig.notifs.placement]
+            onSelected: item => GlobalConfig.notifs.placement = root.placementItems.indexOf(item)
+        }
+
+        StepperRow {
+            label: Tr.tr("Panel width")
+            // TRANSLATORS: px is the pixel unit, leave it untranslated
+            subtext: Tr.tr("Popup width in px; 0 uses the theme default")
+            value: GlobalConfig.notifs.width
+            from: 0
+            to: 800
+            stepSize: 20
+            onMoved: v => GlobalConfig.notifs.width = Math.round(v)
+        }
+
+        StepperRow {
+            last: true
+            label: Tr.tr("Panel max height")
+            // TRANSLATORS: px is the pixel unit, leave it untranslated
+            subtext: Tr.tr("Highest the popup stack grows, in px; 0 fills the screen")
+            value: GlobalConfig.notifs.maxHeight
+            from: 0
+            to: 4000
+            stepSize: 50
+            onMoved: v => GlobalConfig.notifs.maxHeight = Math.round(v)
         }
 
         // Toasts

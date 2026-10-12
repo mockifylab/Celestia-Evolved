@@ -36,7 +36,7 @@ Item {
             id: icon
 
             asynchronous: true
-            source: Quickshell.iconPath(root.modelData?.icon, "image-missing")
+            source: Quickshell.iconPath(root.modelData?.icon, "application-x-executable")
             implicitSize: parent.height * 0.8
 
             anchors.verticalCenter: parent.verticalCenter

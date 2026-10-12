@@ -2,9 +2,11 @@ import QtQuick
 import QtQuick.Layouts
 import Quickshell.Io
 import Caelestia
+import Caelestia.Components
 import Caelestia.Config
 import Caelestia.I18n
 import qs.components
+import qs.components.controls
 import qs.services
 import qs.utils
 import qs.modules.nexus.common
@@ -14,6 +16,10 @@ PageBase {
 
     // Plugin support is not wired up yet; always 0 for now
     readonly property int pluginCount: 0
+
+    // Developer / project homepage (single source of truth for the button below)
+    readonly property string developerName: "Aasif"
+    readonly property string developerUrl: "https://github.com/mockifylab"
 
     property string quickshellVersion
     property string cliVersion
@@ -77,7 +83,7 @@ PageBase {
 
                 StyledText {
                     Layout.alignment: Qt.AlignHCenter
-                    text: CUtils.version ? `v${CUtils.version}` : "…"
+                    text: CUtils.version ? `v${CUtils.version}` : "—"
                     color: Colours.palette.m3onSurfaceVariant
                     font: Tokens.font.body.medium
                 }
@@ -125,23 +131,23 @@ PageBase {
         InfoRow {
             first: true
             label: Tr.trCtx("Shell", "the caelestia shell itself, not a unix shell")
-            value: CUtils.version || "…"
+            value: CUtils.version || "—"
         }
 
         InfoRow {
             label: Tr.trCtx("CLI", "the caelestia command line tool")
-            value: root.cliVersion || "…"
+            value: root.cliVersion || "—"
         }
 
         InfoRow {
             label: "Quickshell"
-            value: root.quickshellVersion || "…"
+            value: root.quickshellVersion || "—"
         }
 
         InfoRow {
             last: true
             label: "Qt"
-            value: CUtils.qtVersion || "…"
+            value: CUtils.qtVersion || "—"
         }
 
         // Plugins
@@ -154,6 +160,34 @@ PageBase {
             last: true
             label: Tr.tr("Loaded plugins")
             value: root.pluginCount.toString()
+        }
+
+        // Developer
+        SectionHeader {
+            text: Tr.tr("Developer")
+        }
+
+        InfoRow {
+            first: true
+            last: true
+            label: Tr.tr("Developed by")
+            value: root.developerName
+        }
+
+        ButtonRow {
+            Layout.topMargin: Tokens.spacing.medium
+            Layout.alignment: Qt.AlignHCenter
+            spacing: Tokens.spacing.small
+
+            IconTextButton {
+                icon: "code"
+                text: Tr.tr("View on GitHub")
+                font: Tokens.font.body.large
+                isRound: true
+                shapeMorph: true
+                type: IconTextButton.Tonal
+                onClicked: Qt.openUrlExternally(root.developerUrl)
+            }
         }
     }
 }
