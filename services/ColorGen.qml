@@ -11,8 +11,25 @@ import Quickshell
 // Color Utilities (which use HCT/CAM16), but it is self-contained (no external
 // `caelestia` CLI needed) and keeps text legible by deriving `on*` roles from
 // the base tone's lightness.
+//
+// It is the single design system of the shell: both the built-in Celestia
+// palettes (see BuiltinPalettes.qml) and wallpaper-derived colours go through
+// `roles()` below, so every surface, including the terminal ramp, is generated
+// from the same tonal rules.
 Singleton {
     id: root
+
+    // Whether a string is usable as a colour seed. Used to reject bogus input
+    // instead of silently generating a palette from garbage.
+    function isValidSeed(seed: string): bool {
+        if (seed === undefined || seed === null)
+            return false;
+        const s = String(seed).trim();
+        if (!/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(s))
+            return false;
+        const c = Qt.color(s);
+        return c !== undefined && c.valid !== false;
+    }
 
     function clamp(v: real, lo: real, hi: real): real {
         return Math.max(lo, Math.min(hi, v));
@@ -33,17 +50,56 @@ Singleton {
         return toHex(Qt.hsla(mod1(h), clamp(s, 0, 1), clamp(t / 100, 0, 1), 1));
     }
 
+    // Move `base` a fraction `pull` (0..1) of the shortest way around the hue
+    // wheel towards `towards`, so canonical accents can be tinted to match a
+    // palette without collapsing into a single colour.
+    function mixHue(base: real, towards: real, pull: real): real {
+        let d = towards - base;
+        if (d > 0.5)
+            d -= 1;
+        else if (d < -0.5)
+            d += 1;
+        return mod1(base + d * clamp(pull, 0, 1));
+    }
+
+    // Terminal colour ramp (term0..term15). Kept in the same tonal system as
+    // the M3 roles so a palette change never leaves stale ANSI colours behind.
+    function terminalRamp(h: real, s: real, nS: real, light: bool): var {
+        const pull = 0.25; // hint the canonical hues towards the seed hue
+        const lo = light ? 30 : 76;
+        const hi = light ? 45 : 90;
+        const hues = [0.99, 0.36, 0.12, 0.62, 0.87, 0.5];
+        const sats = [0.75, 0.55, 0.75, 0.65, 0.6, 0.6];
+        const t = {};
+        t.term0 = tone(h, nS, light ? 20 : 12);
+        t.term7 = tone(h, nS, light ? 40 : 88);
+        t.term8 = tone(h, nS, light ? 60 : 45);
+        t.term15 = tone(h, nS, light ? 95 : 97);
+        for (let i = 0; i < 6; i++) {
+            const hue = mixHue(hues[i], h, pull);
+            t[`term${1 + i}`] = tone(hue, sats[i], lo);
+            t[`term${9 + i}`] = tone(hue, sats[i], hi);
+        }
+        return t;
+    }
+
     // Returns a map of M3 role name -> hex string for the given seed and mode.
-    function roles(seed: string, light: bool): var {
-        const sc = Qt.color(seed);
+    // `opts` tunes the design system per palette:
+    //   sat         - override the accent saturation (0..1)
+    //   neutralSat  - tint of the neutral ramp (default 0.05)
+    //   variantSat  - saturation of secondary/tertiary relative multipliers
+    function roles(seed: string, light: bool, opts: var): var {
+        const o = opts ?? {};
+        const sc = Qt.color(isValidSeed(seed) ? seed : "#808080");
         const h = sc.hslHue;
         // Guarantee enough chroma to read as a themed accent.
-        const s = clamp(Math.max(sc.hslSaturation, 0.28), 0, 0.7);
-        const sh = s * 0.32; // secondary (desaturated)
-        const th = s * 0.55; // tertiary
+        const s = o.sat !== undefined ? clamp(o.sat, 0, 1) : clamp(Math.max(sc.hslSaturation, 0.28), 0, 0.7);
+        const spread = o.variantSat ?? 1;
+        const sh = s * 0.32 * spread; // secondary (desaturated)
+        const th = s * 0.55 * spread; // tertiary
         const tHue = mod1(h + 0.14); // ~+50 degrees
-        const nS = 0.05; // neutral
-        const nvS = 0.12; // neutral variant
+        const nS = o.neutralSat ?? 0.05; // neutral
+        const nvS = nS > 0.05 ? nS + 0.07 : 0.12; // neutral variant
 
         // Primary/secondary/tertiary key tones differ between light and dark.
         const pKey = light ? 40 : 80;
@@ -143,6 +199,11 @@ Singleton {
         r.m3outlineVariant = tone(h, nvS, outlVar);
         r.m3shadow = "#000000";
         r.m3scrim = "#000000";
+
+        // Terminal ramp, derived from the same hues so schemes stay coherent.
+        const termRoles = terminalRamp(h, s, nS, light);
+        for (const [name, colour] of Object.entries(termRoles))
+            r[name] = colour;
 
         return r;
     }

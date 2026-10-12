@@ -2,7 +2,7 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Layouts
-import Quickshell.Io
+import Quickshell
 import Caelestia.Components
 import Caelestia.Config
 import Caelestia.I18n
@@ -14,11 +14,58 @@ import qs.modules.nexus.common
 PageBase {
     id: root
 
-    // The shell derives its palette through the external `caelestia` CLI, which
-    // regenerates scheme.json from the active wallpaper. Detect it up front so we
-    // can be honest about which controls can actually take effect.
-    property bool cliAvailable: false
-    property bool cliChecked: false
+    // Palette generation is entirely in-shell (ImageAnalyser + ColorGen), so the
+    // only thing worth reporting here is what the current source actually did.
+    readonly property string sourceLabel: {
+        switch (Colours.paletteSource) {
+        case "wallpaper":
+            return Tr.tr("Wallpaper colours");
+        case "custom":
+            return Tr.tr("Custom seed colour");
+        case "scheme":
+            return Tr.tr("External scheme file");
+        default:
+            return Tr.tr("Built-in %1").arg(BuiltinPalettes.label(Colours.builtinPalette));
+        }
+    }
+
+    readonly property list<MenuItem> modeItems: [
+        MenuItem {
+            text: Tr.tr("Auto")
+            value: "auto"
+        },
+        MenuItem {
+            text: Tr.tr("Light")
+            value: "light"
+        },
+        MenuItem {
+            text: Tr.tr("Dark")
+            value: "dark"
+        }
+    ]
+
+    readonly property list<MenuItem> sourceItems: [
+        MenuItem {
+            text: Tr.tr("Built-in Celestia palette")
+            value: "builtin"
+            icon: "palette"
+        },
+        MenuItem {
+            text: Tr.tr("Colours derived from wallpaper")
+            value: "wallpaper"
+            icon: "image"
+        },
+        MenuItem {
+            text: Tr.tr("Custom seed colour")
+            value: "custom"
+            icon: "adjust"
+        },
+        MenuItem {
+            text: Tr.tr("Scheme file (external)")
+            value: "scheme"
+            icon: "file_download"
+        }
+    ]
 
     readonly property var paletteRoles: [
         {
@@ -64,13 +111,13 @@ PageBase {
     ]
 
     function refreshFromWallpaper(): void {
-        Colours.setMode(Colours.light ? "light" : "dark");
+        // Re-run the extraction instead of reusing the cached seed.
+        Colours.setPaletteSource("wallpaper");
+        Colours.refreshWallpaper();
     }
 
     title: Tr.tr("Colours")
     isSubPage: true
-
-    Component.onCompleted: cliCheck.running = true
 
     ColumnLayout {
         anchors.horizontalCenter: parent.horizontalCenter
@@ -78,73 +125,118 @@ PageBase {
         width: root.cappedWidth
         spacing: Tokens.spacing.extraSmall / 2
 
-        Process {
-            id: cliCheck
-
-            command: ["sh", "-c", "command -v caelestia"]
-            onRunningChanged: {
-                if (!running) {
-                    root.cliAvailable = cliCheck.exitCode === 0; // qmllint disable missing-property
-                    root.cliChecked = true;
-                }
-            }
+        // Status of the active palette source
+        SectionHeader {
+            first: true
+            text: Tr.tr("Status")
         }
 
-        // Missing-CLI notice
         ConnectedRect {
-            visible: root.cliChecked && !root.cliAvailable
             first: true
             last: true
             Layout.fillWidth: true
-            implicitHeight: noticeLayout.implicitHeight + Tokens.padding.largeIncreased * 2
+            implicitHeight: statusLayout.implicitHeight + Tokens.padding.largeIncreased * 2
 
-            RowLayout {
-                id: noticeLayout
+            ColumnLayout {
+                id: statusLayout
 
                 anchors.fill: parent
                 anchors.margins: Tokens.padding.largeIncreased
-                spacing: Tokens.spacing.medium
+                spacing: Tokens.spacing.small
 
-                MaterialIcon {
-                    Layout.alignment: Qt.AlignTop
-                    Layout.topMargin: Tokens.padding.extraSmall
-                    text: "priority_high"
-                    color: Colours.palette.m3tertiary
-                    fontStyle: Tokens.font.icon.medium
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Tokens.spacing.medium
+
+                    MaterialIcon {
+                        text: Colours.extractionState === "failed" || Colours.themeError !== "" ? "error" : "palette"
+                        color: Colours.extractionState === "failed" || Colours.themeError !== "" ? Colours.palette.m3error : Colours.palette.m3primary
+                        fontStyle: Tokens.font.icon.medium
+                    }
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: Tokens.spacing.extraSmall
+
+                        StyledText {
+                            Layout.fillWidth: true
+                            text: root.sourceLabel
+                            font: Tokens.font.title.medium
+                        }
+
+                        StyledText {
+                            Layout.fillWidth: true
+                            wrapMode: Text.WordWrap
+                            text: Colours.statusMessage !== "" ? Colours.statusMessage : Tr.tr("Palette is up to date")
+                            color: Colours.statusMessage !== "" ? Colours.palette.m3error : Colours.palette.m3onSurfaceVariant
+                            font: Tokens.font.body.small
+                        }
+                    }
                 }
 
-                StyledText {
-                    Layout.fillWidth: true
-                    wrapMode: Text.WordWrap
-                    text: Tr.tr("Wallpaper-derived colours are generated by the 'caelestia' command line tool, which is not installed. Mode and refresh controls below take effect once it is available.")
-                    color: Colours.palette.m3onSurfaceVariant
-                    font: Tokens.font.body.small
+                InfoRow {
+                    visible: Colours.paletteSource === "wallpaper" && Colours.wallpaperSeed !== ""
+                    label: Tr.tr("Extracted seed")
+                    value: Colours.wallpaperSeed
                 }
             }
         }
 
-        // Theme mode
+        // Palette source
         SectionHeader {
-            first: root.cliChecked && root.cliAvailable
-            text: Tr.tr("Theme mode")
+            text: Tr.tr("Palette source")
         }
 
-        ToggleRow {
+        SelectRow {
             first: true
-            last: true
-            text: Tr.tr("Light theme")
-            subtext: Tr.tr("Switch the shell between light and dark palettes")
-            checked: Colours.light
-            onToggled: Colours.setMode(checked ? "light" : "dark")
+            label: Tr.tr("Source")
+            subtext: Tr.tr("Which generator owns the shell palette")
+            menuItems: root.sourceItems
+            active: root.sourceItems.find(i => i.value === Colours.paletteSource) ?? null
+            fallbackText: Colours.paletteSource
+            onSelected: item => Colours.setPaletteSource(item.value)
         }
 
-        // Scheme
-        SectionHeader {
-            text: Tr.tr("Colour scheme")
+        SelectRow {
+            visible: Colours.paletteSource === "builtin"
+            last: Colours.paletteSource !== "builtin"
+            label: Tr.tr("Built-in palette")
+            subtext: Tr.tr("Dark and light variants of the same design")
+            menuItems: paletteItems.instances
+            // qmllint disable missing-property
+            active: paletteItems.instances.find(i => i.value === Colours.builtinPalette) ?? null
+            fallbackText: BuiltinPalettes.label(Colours.builtinPalette)
+            onSelected: item => Colours.setBuiltinPalette(item.value ?? "")
+            // qmllint enable missing-property
+
+            Variants {
+                id: paletteItems
+
+                model: BuiltinPalettes.defs
+
+                MenuItem {
+                    required property var modelData
+
+                    text: modelData.label
+                    icon: modelData.icon
+                    value: modelData.id
+                }
+            }
+        }
+
+        SelectRow {
+            last: Colours.paletteSource !== "scheme"
+            label: Tr.tr("Mode")
+            subtext: Tr.tr("Auto follows the wallpaper's brightness")
+            menuItems: root.modeItems
+            active: root.modeItems.find(i => i.value === GlobalConfig.appearance.colors.mode) ?? null
+            fallbackText: GlobalConfig.appearance.colors.mode
+            onSelected: item => Colours.setMode(item.value)
         }
 
         ConnectedRect {
-            first: true
+            visible: Colours.paletteSource === "scheme"
+            last: true
             Layout.fillWidth: true
             implicitHeight: schemeRow.implicitHeight + Tokens.padding.large * 2
 
@@ -191,19 +283,8 @@ PageBase {
             }
         }
 
-        ToggleRow {
-            last: true
-            text: Tr.tr("Use wallpaper colours")
-            subtext: Tr.tr("Regenerate the palette from the active wallpaper")
-            checked: Config.background.wallpaperEnabled
-            onToggled: {
-                GlobalConfig.background.wallpaperEnabled = checked;
-                if (checked)
-                    root.refreshFromWallpaper();
-            }
-        }
-
         ButtonRow {
+            visible: Colours.paletteSource === "wallpaper"
             Layout.alignment: Qt.AlignHCenter
             Layout.topMargin: Tokens.spacing.small
             spacing: Tokens.spacing.small

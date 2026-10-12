@@ -28,7 +28,18 @@ Singleton {
     // override so CAELESTIA_UPDATE_FEED keeps working.
     property string feedOverride: Quickshell.env("CAELESTIA_UPDATE_FEED") || ""
     readonly property string feedUrl: feedOverride !== "" ? feedOverride : `https://api.github.com/repos/${repo}/releases/latest`
-    readonly property string currentVersion: Quickshell.env("CAELESTIA_UPDATE_CURRENT") || CUtils.version
+    // Installed version, in precedence order:
+    //  1. explicit test override,
+    //  2. the version applied in this session (before a restart),
+    //  3. the VERSION file written into the install dir by a past update,
+    //  4. the version compiled into the C++ plugin (fresh git builds and old
+    //     installs that predate the VERSION file).
+    property string overrideVersion: ""
+    property string detectedVersion: ""
+    // CUtils.version may carry the tag 'v' prefix (default build version comes
+    // from `git describe`); normalise so `v${currentVersion}` never doubles it.
+    readonly property string compiledVersion: CUtils.version.replace(/^v/, "")
+    readonly property string currentVersion: Quickshell.env("CAELESTIA_UPDATE_CURRENT") || (overrideVersion !== "" ? overrideVersion : (detectedVersion !== "" ? detectedVersion : compiledVersion))
     readonly property string helper: Quickshell.env("CAELESTIA_UPDATE_HELPER") || Quickshell.shellPath("assets/update/apply_update.sh")
 
     // Install directory that gets updated / rolled back.
@@ -45,6 +56,7 @@ Singleton {
     property string state: "idle"
     property string latestVersion: ""
     property string downloadUrl: ""
+    property int downloadSize: 0
     property string expectedDigest: ""
     property string releaseNotes: ""
     property string message: ""
@@ -122,6 +134,7 @@ Singleton {
         const assets = json.assets ?? [];
         const pick = assets.find(a => /\.(tar\.gz|tgz|tar\.xz|zip)$/.test(a.name ?? "")) ?? assets[0];
         downloadUrl = pick ? (pick.browser_download_url ?? pick.download_url ?? "") : "";
+        downloadSize = pick ? (pick.size ?? 0) : 0;
         expectedDigest = pick ? (pick.digest ?? "").replace(/^sha256:/, "").toLowerCase() : "";
 
         // GitHub's release API has no per-asset digest, so fall back to a
@@ -135,11 +148,11 @@ Singleton {
 
         const cmp = compareVersions(latestVersion, currentVersion);
         if (cmp > 0 && downloadUrl !== "") {
-            state = "available";
             updateAvailable = true;
+            state = "available";
         } else {
-            state = "upToDate";
             updateAvailable = false;
+            state = "upToDate";
         }
     }
 
@@ -211,16 +224,26 @@ Singleton {
             break;
         case "extract":
             state = "applying";
-            runHelper(["apply", stagedDir, installDir, metaDir], "apply");
+            runHelper(["apply", stagedDir, installDir, metaDir, latestVersion], "apply");
             break;
         case "apply":
+            // Register the new version BEFORE flipping state: observers that
+            // snapshot currentVersion on the state change must already see the
+            // applied release (and the same release must not be re-offered in
+            // this session; after restart the VERSION file takes over).
+            overrideVersion = latestVersion;
+            detectedVersion = latestVersion;
+            updateAvailable = false;
+            rollbackAvailable = true;
             state = "applied";
             message = "Update applied. Restart the shell to load the new version.";
-            rollbackAvailable = true;
-            updateAvailable = false;
             break;
         case "rollback":
             state = "idle";
+            // The backup restored the previous VERSION file (or none), so drop
+            // the session override and re-read what is on disk now.
+            overrideVersion = "";
+            versionFile.reload();
             message = "Rolled back to the previous version. Restart the shell.";
             refreshRollbackStatus();
             break;
@@ -236,9 +259,31 @@ Singleton {
 
     // Opt-in headless auto-check so the whole flow can be driven from tests.
     Component.onCompleted: {
+        versionFile.reload();
         if (Quickshell.env("CAELESTIA_UPDATE_AUTOCHECK") === "1") {
             refreshRollbackStatus();
             Qt.callLater(() => check());
+        }
+    }
+
+    // Authoritative installed-version metadata for tarball-installed shells.
+    FileView {
+        id: versionFile
+
+        path: `${root.installDir}/VERSION`
+        watchChanges: false
+        printErrors: false
+
+        onLoaded: {
+            // Accept both "1.0.2" and legacy "v1.0.2" payloads.
+            const v = text().trim().replace(/^v/, "");
+            if (v !== "" && v !== "undefined")
+                root.detectedVersion = v;
+        }
+        onLoadFailed: _err => {
+            // No VERSION file (fresh build or pre-v1.0.2 install): fall back to
+            // the compiled version. This is not an error state.
+            root.detectedVersion = "";
         }
     }
 

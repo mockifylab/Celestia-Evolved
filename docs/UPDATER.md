@@ -38,9 +38,11 @@ and it refuses to skip steps:
 - **Backup before apply.** The current install is copied to a backup before
   activation. If activation fails midway, the helper automatically restores the
   backup, so the shell is never left broken.
-- **User data preserved.** Your `user.conf` / `user.conf.d` and cache are
-  excluded from the sync, so local customisations survive updates.
-- **One-click rollback.** `Roll back` swaps the backup back into place.
+- **User data preserved.** Your `user.conf` / `user.conf.d`, cache and any
+  installed `plugins/` are excluded from the sync, so local customisations and
+  plugins survive updates (they are also protected from the mirror's deletions).
+- **One-click rollback.** `Roll back` swaps the backup back into place. The same
+  protected paths are kept during a rollback.
 
 All destructive steps live in a single, auditable shell helper
 (`assets/update/apply_update.sh`); the QML service only orchestrates it and
@@ -59,6 +61,25 @@ maintains the UI state machine. This keeps the risky logic small and testable.
 | `rollingBack` | Restoring the previous version |
 | `error` | A step failed; the install directory was left untouched or restored |
 
+## How the installed version is known
+
+A source-only update cannot change the version that is compiled into the C++
+plugin, so the **install directory itself** is the authoritative record. After a
+successful activation the helper writes the new version into `<install>/VERSION`,
+and `Updater.currentVersion` resolves the installed version in this order:
+
+1. `CAELESTIA_UPDATE_CURRENT` (explicit override, for testing / self-hosting),
+2. the version applied in the current session (before a shell restart),
+3. `<install>/VERSION` — written by the updater, and shipped inside every
+   release tarball since v1.0.2,
+4. the version compiled into the plugin — the fallback for older installs that
+   pre-date `VERSION` (they report the version they were built from until their
+   first successful in-app update).
+
+The Updates page, the About page and the "is this release newer?" comparison all
+read the same value, so a successfully installed release is never offered again
+after a restart.
+
 ## Where things live
 
 | Path | Purpose |
@@ -68,6 +89,7 @@ maintains the UI state machine. This keeps the risky logic small and testable.
 | `…/updates/staged/` | Extracted payload awaiting activation |
 | `…/updates/meta/backup/` | Known-good copy of the previous install |
 | `…/updates/meta/rollback.env` | Rollback metadata |
+| `<install>/VERSION` | Authoritative installed version (written on apply) |
 
 Clearing the `updates/` cache directory removes all updater state (including the
 rollback backup).
@@ -82,7 +104,7 @@ release server:
 | --- | --- | --- |
 | `CAELESTIA_UPDATE_REPO` | `mockifylab/Celestia-Shell_Reimagend` | GitHub `owner/repo` used to build the default feed URL |
 | `CAELESTIA_UPDATE_FEED` | GitHub Releases `latest` API URL | Release feed (any URL, incl. `file://`) |
-| `CAELESTIA_UPDATE_CURRENT` | compiled-in version | Override the "installed" version for comparison |
+| `CAELESTIA_UPDATE_CURRENT` | installed `VERSION` file, else compiled-in version | Override the "installed" version for comparison |
 | `CAELESTIA_UPDATE_TARGET` | the running shell's install dir | Directory that gets updated / rolled back |
 | `CAELESTIA_UPDATE_HELPER` | installed `assets/update/apply_update.sh` | Path to the helper script |
 | `CAELESTIA_UPDATE_AUTOCHECK` | unset | Set to `1` to check automatically on startup |

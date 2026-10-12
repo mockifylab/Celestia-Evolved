@@ -1,27 +1,51 @@
 # Theming and settings
 
-Everything below is configured live from **Nexus**, and persisted to
-`~/.config/caelestia/shell.json`. Each page also has a matching IPC target where
-noted.
+Everything below is configured live from **Nexus**. Shell settings persist to
+`~/.config/caelestia/shell.json`; the palette choice and wallpaper colour cache
+persist to `~/.local/state/caelestia/theme.json`. Each page also has a matching
+IPC target where noted.
 
-## Colours (Material You)
+## Colours (palette sources)
 
-Celestia Reimagined generates a full Material 3 palette **inside the shell**,
-from a single seed colour — no external `caelestia` CLI needed.
+Celestia Reimagined generates complete Material 3 palettes **inside the shell**.
+No external `caelestia` CLI is required, and none is used.
 
-Open **Nexus → Appearance** and turn on **Use custom colors**:
+Open **Nexus → Appearance → Palette source** (also on **Wallpaper & style →
+Colors**) and choose one:
 
-- **Seed color** — pick a preset swatch or type any `#rrggbb` value.
-- **Mode** — `Auto` (follows your current light/dark scheme), `Light`, or `Dark`.
+- **Built-in Celestia palette** — a curated palette from the shell's own design
+  system (`services/BuiltinPalettes.qml`): *Celestia*, *Dawn*, *Verdant*,
+  *Nocturne*. Each one generates a coordinated **dark and light** set, and
+  switching between dark and light mode swaps to the matching variant.
+- **Colors from wallpaper** — extracts the dominant colour from the current
+  wallpaper with the shell's own image analyser, generates the palette from it,
+  and caches the result per wallpaper. Changing the wallpaper re-extracts (cached
+  wallpapers apply instantly); **Refresh** forces a re-extraction. In `Auto`
+  mode the light/dark decision comes from the wallpaper's measured luminance.
+- **Custom color** — the classic single seed colour: pick a swatch or type any
+  `#rrggbb`.
+- **External scheme** — reads an externally generated `scheme.json`, if you have
+  one. When no `theme.json` exists yet, the shell migrates your previous choice
+  automatically: an existing `scheme.json` maps to *External scheme*, an enabled
+  custom seed maps to *Custom color*, otherwise *Colors from wallpaper*.
 
-The generator (`services/ColorGen.qml`) derives every M3 role — primary,
-secondary, tertiary, error, success, surfaces, neutrals and their `on*`
-counterparts — using HSL tonal ramps, keeping text legible by deriving `on*`
-roles from each base tone's lightness. It is an approximation of Google's
-Material Color Utilities (which use HCT/CAM16) but is fully self-contained.
+**Mode** — `Auto` (follows the wallpaper/scheme luminance), `Light`, or `Dark`.
 
-When custom colours are **off**, the shell reverts to the standard
-`scheme.json`-driven behaviour, so the two modes coexist cleanly.
+All sources go through one generator (`services/ColorGen.qml`): HSL tonal ramps
+for every M3 role — primary, secondary, tertiary, error, success, background,
+surface and elevated surfaces, their `on*` counterparts, outlines/muted text,
+hover and selected states, plus a coherent `term0..term15` terminal ramp — with
+`on*` roles derived from each base tone's lightness so text stays legible. It is
+an approximation of Google's Material Color Utilities (which use HCT/CAM16) but
+is fully self-contained, and every theme-aware surface (bar, dock, launcher,
+settings, panels, control centre, notifications) reads the same role set.
+
+Extraction and application are reported honestly: the Colors page shows the
+current state (`extracting`, `ok`, `failed`) and the reason for a failure (no
+wallpaper set, unsupported image format, unreadable path, or an image that could
+not be decoded in time) instead of inventing colours.
+
+Scriptable: `qs ipc call colours get|set|list|palette|seed|status`.
 
 ## Appearance
 

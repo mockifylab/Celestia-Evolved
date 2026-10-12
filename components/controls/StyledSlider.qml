@@ -25,9 +25,15 @@ Slider {
     property real pos: visualPosition
     property real filledWidth
 
+    // Actual pixel distance the handle centre travels. All pointer-to-position
+    // maths below maps against this range (not the raw width), so a click or
+    // drag at pixel x selects precisely the value the handle then shows.
+    readonly property real handleTravel: Math.max(1, width - handle.implicitWidth - handle.anchors.leftMargin)
+    readonly property real handleOffset: handle.anchors.leftMargin + handle.implicitWidth / 2
+
     signal interaction(v: real)
 
-    Component.onCompleted: filledWidth = Qt.binding(() => (width - handle.implicitWidth - handle.anchors.leftMargin) * pos)
+    Component.onCompleted: filledWidth = Qt.binding(() => root.handleTravel * pos)
 
     implicitWidth: 200
     implicitHeight: 12
@@ -120,7 +126,7 @@ Slider {
                 lineWidth: root.height * 0.7
                 frequency: root.waveFrequency
                 startX: x
-                fullLength: root.width - handle.implicitWidth - handle.anchors.leftMargin
+                fullLength: root.handleTravel
                 color: root.fgColour
 
                 implicitWidth: root.filledWidth
@@ -172,13 +178,13 @@ Slider {
             pressStartPos = root.visualPosition;
         }
         onPositionChanged: e => {
-            dragMovement = (e.x - pressStartX) / width;
+            dragMovement = (e.x - pressStartX) / root.handleTravel;
             if (root.interactionOnMove)
                 root.interaction(posBinding.value);
         }
         onReleased: e => {
-            const clickPos = e.x / width;
-            const finalPos = mouse.dragMovement !== 0 ? posBinding.value : CUtils.clamp(clickPos, 0, 1);
+            const clickPos = CUtils.clamp((e.x - root.handleOffset) / root.handleTravel, 0, 1);
+            const finalPos = mouse.dragMovement !== 0 ? posBinding.value : clickPos;
             root.interaction(finalPos);
             widthBehavior.enabled = true;
             dragMovement = 0;

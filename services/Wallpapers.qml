@@ -41,17 +41,15 @@ Searcher {
         actualCurrent = path;
         // Persist the path for restoration on shell restart / reboot
         pathWriter.setText(path);
-        // Extract dominant colour and generate palette from it
-        if (Colours.scheme === "dynamic" || !GlobalConfig.appearance.colors.customEnabled)
-            Qt.callLater(() => Colours.applyWallpaper(path));
+        // Colours listens for the actualCurrent change and regenerates the
+        // palette when the wallpaper owns it (see Colours.handleWallpaperChange).
     }
 
     function preview(path: string): void {
         previewPath = path;
         showPreview = true;
 
-        if (Colours.scheme === "dynamic" || !GlobalConfig.appearance.colors.customEnabled)
-            Colours.previewWallpaper(path);
+        Colours.previewWallpaper(path);
     }
 
     function stopPreview(): void {

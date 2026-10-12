@@ -28,6 +28,34 @@ Singleton {
     property bool cooldownPending
     property real lastBaseTransparency
 
+    // --- Palette sources (v1.0.2) ---
+    // Which generator owns the live palette. The choice is stored in shell
+    // state (`theme.json`) so it survives restarts and does not depend on a
+    // rebuilt config plugin:
+    //   builtin   curated in-shell Celestia palette (see BuiltinPalettes)
+    //   wallpaper colours extracted from the active wallpaper
+    //   custom    legacy: seed colour picked in the Appearance settings
+    //   scheme    legacy: scheme.json written by an external tool
+    readonly property list<string> paletteSourceIds: ["builtin", "wallpaper", "custom", "scheme"]
+    property string paletteSource: "builtin"
+    property string builtinPalette: BuiltinPalettes.defaultId
+    // Extraction bookkeeping for the wallpaper source. `extractionState` is
+    // idle | extracting | ok | failed: failures are surfaced to the user and
+    // never replaced by a fabricated palette.
+    property string extractionState: "idle"
+    property string extractionError: ""
+    property string themeError: ""
+    property string wallpaperSeed: ""
+    property string wallpaperSeedPath: ""
+    property string pendingWallpaper: ""
+    property var wallpaperCache: ({})
+    readonly property string themeStatePath: `${Paths.state}/theme.json`
+    property bool themeStateLoaded
+    property bool themeStateMissing
+    property bool schemeAvailable
+    // Whether the palette currently on screen came from a real source.
+    readonly property string statusMessage: root.themeError !== "" ? root.themeError : root.extractionError
+
     function getLuminance(c: color): real {
         if (c.r == 0 && c.g == 0 && c.b == 0)
             return 0;
@@ -60,8 +88,9 @@ Singleton {
     }
 
     function load(data: string, isPreview: bool): void {
-        // When custom in-shell colours are enabled they win over scheme.json.
-        if (!isPreview && GlobalConfig.appearance.colors.customEnabled)
+        // scheme.json is only authoritative when the user selects that source;
+        // otherwise an external generator must not fight the in-shell palette.
+        if (!isPreview && root.paletteSource !== "scheme")
             return;
 
         const colours = isPreview ? preview : current;
@@ -84,18 +113,160 @@ Singleton {
 
     function setMode(mode: string): void {
         GlobalConfig.appearance.colors.mode = mode;
-        if (GlobalConfig.appearance.colors.customEnabled)
-            root.applyCustom();
-        else
-            applyWallpaper(Wallpapers.actualCurrent);
+        root.applyTheme();
     }
 
-    // Generate palette from a wallpaper image using the built-in ImageAnalyser.
-    // Falls back to the last valid theme if extraction fails.
-    function applyWallpaper(path: string): void {
-        if (!path)
+    // --- Source / palette selection -------------------------------------
+
+    function setPaletteSource(source: string): void {
+        if (!root.paletteSourceIds.includes(source) || root.paletteSource === source)
             return;
+        root.paletteSource = source;
+        root.saveThemeState();
+        root.applyTheme();
+    }
+
+    function setBuiltinPalette(paletteId: string): void {
+        if (!BuiltinPalettes.isKnown(paletteId)) {
+            root.themeError = `Unknown built-in palette '${paletteId}'`;
+            return;
+        }
+        root.themeError = "";
+        if (root.builtinPalette === paletteId)
+            return;
+        root.builtinPalette = paletteId;
+        root.saveThemeState();
+        root.applyTheme();
+    }
+
+    // --- Wallpaper-derived colours --------------------------------------
+
+    function isSupportedImage(path: string): bool {
+        return /\.(png|jpe?g|webp|bmp|gif)$/i.test(path);
+    }
+
+    // Explicit light/dark choice wins; 'auto' follows the analysed wallpaper.
+    function resolveLight(): bool {
+        const mode = GlobalConfig.appearance.colors.mode;
+        if (mode === "light")
+            return true;
+        if (mode === "dark")
+            return false;
+        return analyser.luminance > 0.5;
+    }
+
+    // Write a generated role map into a palette. Returns false when the map is
+    // not a complete palette, so callers can refuse to claim success.
+    // Preview writes never touch the live status message.
+    function applyRoles(roles: var, colours: QtObject, isPreview: bool): bool {
+        const names = Object.keys(roles ?? {});
+        if (names.length < 40) {
+            if (!isPreview)
+                root.themeError = "Palette generation produced no colours";
+            return false;
+        }
+        let applied = 0;
+        for (const name of names) {
+            if (colours.hasOwnProperty(name)) {
+                colours[name] = roles[name];
+                applied++;
+            }
+        }
+        if (applied < names.length) {
+            if (!isPreview)
+                root.themeError = `Palette generation produced ${applied}/${names.length} recognised roles`;
+            return false;
+        }
+        root.themeError = "";
+        return true;
+    }
+
+    // The single writer of the live palette.
+    function applyTheme(): void {
+        // Any extraction still in flight is now stale.
+        root.pendingWallpaper = "";
+        const light = root.resolveLight();
+        switch (root.paletteSource) {
+        case "wallpaper":
+            root.requestWallpaper(Wallpapers.actualCurrent);
+            break;
+        case "custom":
+            root.applyCustom();
+            break;
+        case "scheme":
+            schemeFile.reload();
+            break;
+        default:
+            if (root.applyRoles(BuiltinPalettes.roles(root.builtinPalette, light), root.current, false)) {
+                root.currentLight = light;
+                root.scheme = `celestia:${root.builtinPalette}`;
+            }
+            break;
+        }
+    }
+
+    // Extract a seed from the wallpaper and build the palette from it. Results
+    // are cached per wallpaper path, so restarting the shell (or switching back
+    // and forth between sources) does not re-decode the image, and a new
+    // wallpaper is re-analysed automatically.
+    function requestWallpaper(path: string): void {
+        if (!path) {
+            root.extractionState = "failed";
+            root.extractionError = "No wallpaper is selected, so there is nothing to extract colours from.";
+            return;
+        }
+        if (!root.isSupportedImage(path)) {
+            root.extractionState = "failed";
+            root.extractionError = `Unsupported wallpaper format: ${Paths.shortenHome(path)}`;
+            return;
+        }
+
+        const light = root.resolveLight();
+        const cached = root.wallpaperCache[path];
+        if (typeof cached === "string" && ColorGen.isValidSeed(cached)) {
+            root.wallpaperSeed = cached;
+            root.wallpaperSeedPath = path;
+            if (root.applyRoles(ColorGen.roles(cached, light, {}), root.current, false)) {
+                root.currentLight = light;
+                root.scheme = "dynamic";
+                root.extractionState = "ok";
+                root.extractionError = "";
+            }
+            return;
+        }
+
+        root.extractionState = "extracting";
+        root.extractionError = "";
+        root.pendingWallpaper = path;
+        // Re-assigning the same path would be ignored by the analyser, so force
+        // a re-read for manual refreshes.
+        wallpaperAnalyser.source = "";
         wallpaperAnalyser.source = path;
+        extractTimer.restart();
+    }
+
+    // Force a fresh extraction ("Refresh from wallpaper"), discarding the cache
+    // entry for the current wallpaper.
+    function refreshWallpaper(): void {
+        const path = Wallpapers.actualCurrent;
+        delete root.wallpaperCache[path];
+        root.wallpaperCache = Object.assign({}, root.wallpaperCache);
+        root.requestWallpaper(path);
+    }
+
+    // Called when the wallpaper changes: regenerate if the wallpaper owns the
+    // palette, otherwise just keep the luminance-based auto mode in step.
+    function handleWallpaperChange(path: string): void {
+        if (root.paletteSource === "wallpaper")
+            root.requestWallpaper(path);
+        else if (GlobalConfig.appearance.colors.mode === "auto")
+            root.applyTheme();
+    }
+
+    // Kept for external callers (scripts, IPC): route into the single wallpaper
+    // extraction path.
+    function applyWallpaper(path: string): void {
+        root.requestWallpaper(path);
     }
 
     function previewWallpaper(path: string): void {
@@ -105,28 +276,87 @@ Singleton {
     }
 
     // Generate the full M3 palette from the configured seed and write it into the
-    // live palette so every surface adopts it. No-op when custom colours are off.
+    // live palette so every surface adopts it.
     function applyCustom(): void {
         const c = GlobalConfig.appearance.colors;
-        if (!c.customEnabled)
+        if (!ColorGen.isValidSeed(c.seed)) {
+            root.themeError = `'${c.seed}' is not a valid seed colour`;
             return;
+        }
 
-        let light;
-        if (c.mode === "light")
-            light = true;
-        else if (c.mode === "dark")
-            light = false;
-        else
-            // auto: derive from wallpaper luminance (>0.5 → light)
-            light = analyser.luminance > 0.5;
-
+        const light = root.resolveLight();
         root.currentLight = light;
 
-        const roles = ColorGen.roles(c.seed, light);
-        for (const [name, colour] of Object.entries(roles)) {
-            if (root.current.hasOwnProperty(name))
-                root.current[name] = colour;
+        if (root.applyRoles(ColorGen.roles(c.seed, light, {}), root.current, false))
+            root.scheme = "custom";
+    }
+
+    // --- Persistence ----------------------------------------------------
+
+    function saveThemeState(): void {
+        if (!root.themeStateLoaded)
+            return;
+        const data = {
+            source: root.paletteSource,
+            builtin: root.builtinPalette,
+            wallpaperSeed: root.wallpaperSeed,
+            wallpaperSeedPath: root.wallpaperSeedPath,
+            wallpaperCache: root.wallpaperCache
+        };
+        themeWriter.setText(JSON.stringify(data, null, 2));
+    }
+
+    function loadThemeState(raw: string): void {
+        let data = null;
+        try {
+            data = JSON.parse(raw);
+        } catch (_e) {
+            data = null;
         }
+
+        if (!data || typeof data !== "object") {
+            root.migrateThemeState();
+            root.themeStateLoaded = true;
+            root.themeStateMissing = true;
+            root.saveThemeState();
+            root.applyTheme();
+            return;
+        }
+
+        root.themeStateMissing = false;
+
+        if (root.paletteSourceIds.includes(data.source))
+            root.paletteSource = data.source;
+        if (BuiltinPalettes.isKnown(data.builtin))
+            root.builtinPalette = data.builtin;
+        if (data.wallpaperCache && typeof data.wallpaperCache === "object") {
+            const cache = {};
+            for (const [path, seed] of Object.entries(data.wallpaperCache)) {
+                if (typeof seed === "string" && ColorGen.isValidSeed(seed))
+                    cache[path] = seed;
+            }
+            root.wallpaperCache = cache;
+        }
+        if (typeof data.wallpaperSeed === "string" && ColorGen.isValidSeed(data.wallpaperSeed)) {
+            root.wallpaperSeed = data.wallpaperSeed;
+            root.wallpaperSeedPath = typeof data.wallpaperSeedPath === "string" ? data.wallpaperSeedPath : "";
+        }
+
+        root.themeStateLoaded = true;
+        root.applyTheme();
+    }
+
+    // No saved preference yet (fresh install or an install predating v1.0.2):
+    // keep the look the user already had instead of surprising them. An
+    // external scheme generator that is actually producing schemes wins, exactly
+    // as before this version.
+    function migrateThemeState(): void {
+        if (root.schemeAvailable)
+            root.paletteSource = "scheme";
+        else if (!GlobalConfig.appearance.colors.customEnabled)
+            root.paletteSource = "wallpaper";
+        else
+            root.paletteSource = "builtin";
     }
 
     function reloadHyprRules(): void {
@@ -151,28 +381,27 @@ Singleton {
     }
 
     Component.onCompleted: {
-        root.applyCustom();
+        themeFile.reload();
         root.requestReloadHyprRules();
     }
 
     Connections {
+        // The legacy `customEnabled` switch is now a shorthand for a palette
+        // source, so hand-editing the config file keeps working.
         function onCustomEnabledChanged(): void {
-            if (GlobalConfig.appearance.colors.customEnabled) {
-                root.applyCustom();
-            } else {
-                // Try reloading scheme.json (upstream path); if unavailable, use wallpaper
-                schemeFile.reload();
-                if (root.scheme !== "dynamic")
-                    root.applyWallpaper(Wallpapers.actualCurrent);
-            }
+            if (!root.themeStateLoaded)
+                return;
+            root.setPaletteSource(GlobalConfig.appearance.colors.customEnabled ? "custom" : "wallpaper");
         }
 
         function onSeedChanged(): void {
-            root.applyCustom();
+            if (root.paletteSource === "custom")
+                root.applyTheme();
         }
 
         function onModeChanged(): void {
-            root.applyCustom();
+            if (root.themeStateLoaded)
+                root.applyTheme();
         }
 
         target: GlobalConfig.appearance.colors
@@ -181,11 +410,21 @@ Singleton {
     // Re-evaluate auto mode when wallpaper luminance changes
     Connections {
         function onLuminanceChanged(): void {
-            if (GlobalConfig.appearance.colors.customEnabled && GlobalConfig.appearance.colors.mode === "auto")
-                root.applyCustom();
+            if (root.themeStateLoaded && GlobalConfig.appearance.colors.mode === "auto")
+                root.applyTheme();
         }
 
         target: analyser
+    }
+
+    // Wallpaper changes: regenerate when the wallpaper owns the palette.
+    Connections {
+        function onActualCurrentChanged(): void {
+            if (root.themeStateLoaded)
+                root.handleWallpaperChange(Wallpapers.actualCurrent);
+        }
+
+        target: Wallpapers
     }
 
     Connections {
@@ -196,6 +435,63 @@ Singleton {
         target: Hypr
     }
 
+    // Scriptable control of the theme, mirroring the wallpaper IPC handler.
+    IpcHandler {
+        function get(): string {
+            return root.paletteSource;
+        }
+
+        function set(source: string): void {
+            root.setPaletteSource(source);
+        }
+
+        function list(): string {
+            return root.paletteSourceIds.join("\n");
+        }
+
+        // Live role values, so automation can verify the palette actually
+        // changed instead of trusting a setting write.
+        function palette(): string {
+            const p = root.current;
+            return `${p.m3primary} ${p.m3surface} ${p.m3onSurface} ${p.m3outline}`;
+        }
+
+        function seed(): string {
+            return root.wallpaperSeed;
+        }
+
+        function status(): string {
+            return `${root.extractionState}|${root.statusMessage}`;
+        }
+
+        target: "colours"
+    }
+
+    FileView {
+        id: themeFile
+
+        path: root.themeStatePath
+        watchChanges: false
+        printErrors: false
+        onLoaded: root.loadThemeState(themeFile.text())
+        onLoadFailed: {
+            // No saved preference yet: inherit the previous behaviour rather
+            // than silently restyling an existing install.
+            root.migrateThemeState();
+            root.themeStateLoaded = true;
+            root.themeStateMissing = true;
+            root.saveThemeState();
+            root.applyTheme();
+        }
+    }
+
+    FileView {
+        id: themeWriter
+
+        path: root.themeStatePath
+        printErrors: false
+    }
+
     FileView {
         id: schemeFile
 
@@ -203,11 +499,24 @@ Singleton {
         watchChanges: true
         printErrors: false
         onFileChanged: reload()
-        onLoaded: root.load(text(), false)
+        onLoaded: {
+            root.schemeAvailable = true;
+            // An install that predates v1.0.2 and is driven by an external
+            // scheme generator keeps that generator.
+            if (root.themeStateMissing) {
+                root.themeStateMissing = false;
+                root.paletteSource = "scheme";
+                root.saveThemeState();
+            }
+            root.load(schemeFile.text(), false);
+        }
         onLoadFailed: {
-            // scheme.json unavailable (no caelestia CLI): derive from wallpaper
-            if (!GlobalConfig.appearance.colors.customEnabled)
-                root.applyWallpaper(Wallpapers.actualCurrent);
+            root.schemeAvailable = false;
+            // Only an error the user can act on when they picked this source.
+            if (root.paletteSource === "scheme") {
+                root.extractionState = "failed";
+                root.extractionError = `No scheme file at ${Paths.shortenHome(`${Paths.state}/scheme.json`)}. Choose another palette source in Appearance settings.`;
+            }
         }
     }
 
@@ -222,22 +531,30 @@ Singleton {
         id: wallpaperAnalyser
 
         onDominantColourChanged: {
-            const seed = ColorGen.toHex(dominantColour);
-            const mode = GlobalConfig.appearance.colors.mode;
-            let light;
-            if (mode === "light")
-                light = true;
-            else if (mode === "dark")
-                light = false;
-            else
-                light = analyser.luminance > 0.5;
-            root.currentLight = light;
-            const roles = ColorGen.roles(seed, light);
-            for (const [name, colour] of Object.entries(roles)) {
-                if (root.current.hasOwnProperty(name))
-                    root.current[name] = colour;
+            // Results arrive asynchronously; drop anything no longer requested
+            // (e.g. the user switched source or wallpaper mid-extraction).
+            const path = root.pendingWallpaper;
+            if (path === "")
+                return;
+            root.pendingWallpaper = "";
+            extractTimer.stop();
+
+            const seed = ColorGen.toHex(wallpaperAnalyser.dominantColour);
+            const light = root.resolveLight();
+            root.wallpaperSeed = seed;
+            root.wallpaperSeedPath = path;
+            if (root.applyRoles(ColorGen.roles(seed, light, {}), root.current, false)) {
+                root.currentLight = light;
+                root.scheme = "dynamic";
+                root.extractionState = "ok";
+                root.extractionError = "";
+                // Cache per wallpaper so restarts and source switches are instant.
+                root.wallpaperCache[path] = seed;
+                root.saveThemeState();
+            } else {
+                root.extractionState = "failed";
+                root.extractionError = `Colour extraction from ${Paths.shortenHome(path)} produced no usable palette.`;
             }
-            root.scheme = "dynamic";
         }
     }
 
@@ -245,23 +562,29 @@ Singleton {
         id: previewAnalyser
 
         onDominantColourChanged: {
-            const seed = ColorGen.toHex(dominantColour);
-            const mode = GlobalConfig.appearance.colors.mode;
-            let light;
-            if (mode === "light")
-                light = true;
-            else if (mode === "dark")
-                light = false;
-            else
-                light = analyser.luminance > 0.5;
+            const seed = ColorGen.toHex(previewAnalyser.dominantColour);
+            const light = root.resolveLight();
             root.previewLight = light;
-            const roles = ColorGen.roles(seed, light);
-            for (const [name, colour] of Object.entries(roles)) {
-                if (root.preview.hasOwnProperty(name))
-                    root.preview[name] = colour;
+            if (root.applyRoles(ColorGen.roles(seed, light, {}), root.preview, true)) {
+                root.showPreview = true;
+                Wallpapers.previewColourLock = false;
             }
-            root.showPreview = true;
-            Wallpapers.previewColourLock = false;
+        }
+    }
+
+    // Image decoding happens in the plugin and reports no failure of its own,
+    // so a stalled extraction is surfaced instead of leaving the user waiting.
+    Timer {
+        id: extractTimer
+
+        interval: 5000
+        onTriggered: {
+            if (root.extractionState !== "extracting")
+                return;
+            const path = root.pendingWallpaper;
+            root.pendingWallpaper = "";
+            root.extractionState = "failed";
+            root.extractionError = `Could not read colours from ${Paths.shortenHome(path)}. The image may be corrupt or its format is not supported.`;
         }
     }
 

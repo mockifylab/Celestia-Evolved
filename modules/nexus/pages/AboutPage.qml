@@ -83,7 +83,7 @@ PageBase {
 
                 StyledText {
                     Layout.alignment: Qt.AlignHCenter
-                    text: CUtils.version ? `v${CUtils.version}` : "—"
+                    text: Updater.currentVersion ? `v${Updater.currentVersion}` : "—"
                     color: Colours.palette.m3onSurfaceVariant
                     font: Tokens.font.body.medium
                 }
@@ -131,7 +131,9 @@ PageBase {
         InfoRow {
             first: true
             label: Tr.trCtx("Shell", "the caelestia shell itself, not a unix shell")
-            value: CUtils.version || "—"
+            // Same authoritative source the updater uses: VERSION file after an
+            // in-app update, compiled version for fresh git builds.
+            value: Updater.currentVersion || "—"
         }
 
         InfoRow {

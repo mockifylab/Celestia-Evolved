@@ -66,7 +66,10 @@ echo "// old shell" >"$HELPERS/install/shell.qml"
 echo "user = 42" >"$HELPERS/install/user.conf"
 
 # --- Feed served over HTTP from 127.0.0.1 ---
-PORT=8799
+# Pick a free port dynamically: a fixed port can be squatted by a leftover
+# process, which would silently make this fixture serve a stale feed (the
+# bind failure is otherwise invisible behind the redirect).
+PORT="$(python3 -c "import socket; s=socket.socket(); s.bind(('127.0.0.1',0)); print(s.getsockname()[1]); s.close()")"
 cat >"$FIXTURE/releases.json" <<EOF
 {
   "tag_name": "v1.0.1",
@@ -84,6 +87,11 @@ EOF
 python3 -m http.server "$PORT" --bind 127.0.0.1 --directory "$FIXTURE" >/dev/null 2>&1 &
 FEED_PID=$!
 sleep 1
+if ! kill -0 "$FEED_PID" 2>/dev/null; then
+    echo "FAIL: fixture feed server on port $PORT did not start"
+    echo "== result: 0 passed, 1 failed =="
+    exit 1
+fi
 
 # --- Assemble a throwaway quickshell config tree that wires the REAL service
 #     singleton (services/Updater.qml) as qs.services and the REAL utils
@@ -118,9 +126,11 @@ check_file "update flag raised" 'state=verifying.*avail=true' "$OUT"
 check_file "asset digest extracted" "RESULT\|parsed.*digest=${DIGEST:0:8}" "$OUT"
 check_file "release notes surfaced" 'RESULT\|parsed.*notes=true' "$OUT"
 check_file "chain reached applied" 'RESULT\|final.*state=applied' "$OUT"
+check_file "apply registers new version" 'RESULT\|final.*state=applied.*latest=1\.0\.1.*cur=1\.0\.1.*avail=false' "$OUT"
+check_file "same release not re-offered after install" 'RESULT\|recheck.*state=upToDate.*cur=1\.0\.1' "$OUT"
 
 # --- Effects on disk ---
-check "install VERSION bumped" "v1.0.1" "$(cat "$HELPERS/install/VERSION" 2>/dev/null)"
+check "install VERSION registered" "1.0.1" "$(cat "$HELPERS/install/VERSION" 2>/dev/null)"
 check "user data preserved" "user = 42" "$(cat "$HELPERS/install/user.conf" 2>/dev/null)"
 check "shell.qml updated" "// new shell" "$(cat "$HELPERS/install/shell.qml" 2>/dev/null)"
 [[ -f "$FIXTURE/cache/caelestia/updates/rollback.env" ]]

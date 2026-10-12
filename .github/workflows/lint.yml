@@ -63,7 +63,7 @@ jobs:
           # QuickshellScreenInfo.name to qmllint) without any bearing on runtime
           # stability. Revisit scope once the CI image is pinned to upstream's
           # toolchain snapshot.
-          set -l owned services/Updater.qml services/ColorGen.qml services/Colours.qml modules/Shortcuts.qml modules/nexus/PageRegistry.qml modules/nexus/PageCompRegistry.qml modules/nexus/common/SliderRow.qml modules/nexus/pages/AppearancePage.qml modules/nexus/pages/MotionPage.qml modules/nexus/pages/HyprlandPage.qml modules/nexus/pages/UpdatePage.qml modules/nexus/pages/wallandstyle/ColourSelect.qml modules/nexus/pages/wallandstyle/WallpaperSelect.qml modules/nexus/pages/wallandstyle/WallpaperCategory.qml
+          set -l owned services/Updater.qml services/ColorGen.qml services/BuiltinPalettes.qml services/Colours.qml modules/Shortcuts.qml modules/nexus/PageRegistry.qml modules/nexus/PageCompRegistry.qml modules/nexus/common/SliderRow.qml modules/nexus/pages/AppearancePage.qml modules/nexus/pages/MotionPage.qml modules/nexus/pages/HyprlandPage.qml modules/nexus/pages/UpdatePage.qml modules/nexus/pages/wallandstyle/ColourSelect.qml modules/nexus/pages/wallandstyle/WallpaperSelect.qml modules/nexus/pages/wallandstyle/WallpaperCategory.qml
           set -l qml_files
           for f in $owned
             if test -e $f

@@ -12,7 +12,10 @@
 #   verify   <file> <expected_sha256> Check SHA-256; exit 0 ok / 3 mismatch.
 #   compare  <a> <b>                  Print -1|0|1 for semver a<=>b.
 #   extract  <tarball> <dir>          Extract a release tarball into <dir>.
-#   apply    <staged> <install> <meta>Back up <install>, then activate <staged>.
+#   apply    <staged> <install> <meta> [<version>]
+#                                       Back up <install>, activate <staged>,
+#                                       and register <version> as the installed
+#                                       version (written to <install>/VERSION).
 #   rollback <install> <meta>         Restore the last backup made by `apply`.
 #   status   <meta>                   Print current rollback availability as KV.
 #
@@ -162,7 +165,7 @@ cmd_extract() {
 }
 
 cmd_apply() {
-    local staged="${1:-}" install="${2:-}" meta="${3:-}"
+    local staged="${1:-}" install="${2:-}" meta="${3:-}" version="${4:-}"
     [[ -n "$staged" && -n "$install" && -n "$meta" ]] || usage
     [[ -d "$staged" ]] || { EXITCODE=5 die "staged dir missing: $staged"; }
     [[ -d "$install" ]] || { EXITCODE=5 die "install dir missing: $install"; }
@@ -177,21 +180,37 @@ cmd_apply() {
         echo "rollback_path=$backup"
         echo "install=$install"
         echo "applied_from=$staged"
+        echo "applied_version=$version"
         echo "applied_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     } >"$meta/rollback.env"
 
-    # Activate: mirror staged into install, preserving user config files.
+    # Activate: mirror staged into install, preserving user-owned content.
     # -c forces a content (checksum) comparison so files that happen to share
     # size+mtime with the old install are still refreshed correctly.
+    # Excluded paths are also protected from --delete (rsync does not remove
+    # excluded files unless --delete-excluded is given), so the user's config,
+    # caches and any installed plugins survive an update.
     rsync -ac --delete \
         --exclude 'user.conf' \
         --exclude 'user.conf.d' \
         --exclude '.cache' \
+        --exclude 'plugins/' \
         "$staged/" "$install/" || {
         # On failure, restore the snapshot we just took.
-        rsync -ac --delete "$backup/" "$install/" || die "apply failed AND restore failed"
+        rsync -ac --delete --exclude 'user.conf' --exclude 'user.conf.d' \
+            --exclude '.cache' --exclude 'plugins/' \
+            "$backup/" "$install/" || die "apply failed AND restore failed"
         die "apply failed; restored previous version"
     }
+
+    # Register the installed version as authoritative metadata. This is the
+    # single source of truth the shell reads at startup (Updater.currentVersion
+    # prefers it over the version compiled into the C++ plugin, which a
+    # source-only update cannot change).
+    if [[ -n "$version" ]]; then
+        printf '%s\n' "$version" >"$install/VERSION" || die "apply ok but version registration failed"
+        echo "registered version $version"
+    fi
     echo "applied"
 }
 
@@ -200,7 +219,9 @@ cmd_rollback() {
     [[ -n "$install" && -n "$meta" ]] || usage
     local backup="$meta/backup"
     [[ -d "$backup" ]] || { EXITCODE=4 die "no backup to roll back to"; }
+    # Rollback must not destroy user data either: same protected paths as apply.
     rsync -ac --delete --exclude 'user.conf' --exclude 'user.conf.d' \
+        --exclude '.cache' --exclude 'plugins/' \
         "$backup/" "$install/" || die "rollback failed"
     echo "rolled-back"
 }

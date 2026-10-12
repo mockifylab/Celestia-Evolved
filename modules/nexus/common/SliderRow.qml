@@ -7,6 +7,7 @@ import qs.components
 import qs.components.controls
 import qs.services
 import qs.modules.nexus.common
+import "sliderMapping.js" as SliderMap
 
 ConnectedRect {
     id: root
@@ -67,9 +68,9 @@ ConnectedRect {
                 function onWheel(event: WheelEvent): void {
                     const step = root.stepSize > 0 ? root.stepSize : GlobalConfig.services.audioIncrement;
                     if (event.angleDelta.y > 0)
-                        root.moved(Math.min(root.to, root.value + step));
+                        root.moved(SliderMap.clamp(SliderMap.snap(root.value + step, root.from, step), root.from, root.to));
                     else if (event.angleDelta.y < 0)
-                        root.moved(Math.max(root.from, root.value - step));
+                        root.moved(SliderMap.clamp(SliderMap.snap(root.value - step, root.from, step), root.from, root.to));
                 }
 
                 Layout.fillWidth: true
@@ -85,14 +86,12 @@ ConnectedRect {
                     from: root.from
                     to: root.to
                     stepSize: root.stepSize > 0 ? root.stepSize : 0
-                    value: root.value
+                    // Validate out-of-range programmatic/restore values so the
+                    // handle can never sit at a position that disagrees with the
+                    // stored setting.
+                    value: SliderMap.clamp(root.value, root.from, root.to)
                     enabled: root.enabled
-                    onInteraction: v => {
-                        let actual = root.from + v * (root.to - root.from);
-                        if (root.stepSize > 0)
-                            actual = Math.round((actual - root.from) / root.stepSize) * root.stepSize + root.from;
-                        root.moved(Math.max(root.from, Math.min(root.to, actual)));
-                    }
+                    onInteraction: v => root.moved(SliderMap.positionToValue(v, root.from, root.to, root.stepSize))
                 }
             }
         }
