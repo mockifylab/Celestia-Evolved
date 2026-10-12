@@ -16,8 +16,8 @@ using Qt::StringLiterals::operator""_s;
 Q_LOGGING_CATEGORY(lcHypr, "caelestia.services.hypr", QtInfoMsg)
 
 QVariant optionValueFromJson(const QJsonObject& obj) {
-    static const QStringList types { u"bool"_s, u"int"_s, u"float"_s, u"str"_s, u"css"_s, u"vec2"_s };
-    for (const auto& type : types) {
+    static const QStringList k_types = { u"bool"_s, u"int"_s, u"float"_s, u"str"_s, u"css"_s, u"vec2"_s };
+    for (const auto& type : k_types) {
         if (obj.contains(type)) {
             return obj.value(type).toVariant();
         }
@@ -302,10 +302,10 @@ HyprExtras::SocketPtr HyprExtras::makeAccumulatedRequest(
     }
 
     auto socket = SocketPtr::create(this);
-    auto buffer = QSharedPointer<QByteArray>::create();
-    auto done = QSharedPointer<bool>::create(false);
+    const auto buffer = QSharedPointer<QByteArray>::create();
+    const auto done = QSharedPointer<bool>::create(false);
 
-    auto finish = [done, socket, buffer, callback](bool success) {
+    const auto finish = [done, socket, buffer, callback](bool success) {
         if (*done) {
             return;
         }
@@ -314,22 +314,22 @@ HyprExtras::SocketPtr HyprExtras::makeAccumulatedRequest(
         socket->close();
     };
 
-    QObject::connect(socket.data(), &QLocalSocket::connected, this, [=, this] {
+    QObject::connect(socket.data(), &QLocalSocket::connected, this, [=] {
         socket->write(request.toUtf8());
         socket->flush();
     });
 
-    QObject::connect(socket.data(), &QLocalSocket::readyRead, this, [=, this] {
+    QObject::connect(socket.data(), &QLocalSocket::readyRead, this, [=] {
         buffer->append(socket->readAll());
     });
 
     // Large responses (descriptions, option batches) arrive in several chunks; the
     // compositor closes the connection once the full response has been written.
-    QObject::connect(socket.data(), &QLocalSocket::disconnected, this, [=, this] {
+    QObject::connect(socket.data(), &QLocalSocket::disconnected, this, [=] {
         finish(true);
     });
 
-    QObject::connect(socket.data(), &QLocalSocket::errorOccurred, this, [=, this](QLocalSocket::LocalSocketError err) {
+    QObject::connect(socket.data(), &QLocalSocket::errorOccurred, this, [=](QLocalSocket::LocalSocketError err) {
         if (*done) {
             return;
         }
