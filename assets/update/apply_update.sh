@@ -184,16 +184,22 @@ cmd_apply() {
         echo "applied_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     } >"$meta/rollback.env"
 
-    # Activate: mirror staged into install, preserving user config files.
+    # Activate: mirror staged into install, preserving user-owned content.
     # -c forces a content (checksum) comparison so files that happen to share
     # size+mtime with the old install are still refreshed correctly.
+    # Excluded paths are also protected from --delete (rsync does not remove
+    # excluded files unless --delete-excluded is given), so the user's config,
+    # caches and any installed plugins survive an update.
     rsync -ac --delete \
         --exclude 'user.conf' \
         --exclude 'user.conf.d' \
         --exclude '.cache' \
+        --exclude 'plugins/' \
         "$staged/" "$install/" || {
         # On failure, restore the snapshot we just took.
-        rsync -ac --delete "$backup/" "$install/" || die "apply failed AND restore failed"
+        rsync -ac --delete --exclude 'user.conf' --exclude 'user.conf.d' \
+            --exclude '.cache' --exclude 'plugins/' \
+            "$backup/" "$install/" || die "apply failed AND restore failed"
         die "apply failed; restored previous version"
     }
 
@@ -213,7 +219,9 @@ cmd_rollback() {
     [[ -n "$install" && -n "$meta" ]] || usage
     local backup="$meta/backup"
     [[ -d "$backup" ]] || { EXITCODE=4 die "no backup to roll back to"; }
+    # Rollback must not destroy user data either: same protected paths as apply.
     rsync -ac --delete --exclude 'user.conf' --exclude 'user.conf.d' \
+        --exclude '.cache' --exclude 'plugins/' \
         "$backup/" "$install/" || die "rollback failed"
     echo "rolled-back"
 }

@@ -125,6 +125,29 @@ run "extract nested" 0 "$SCRIPT" extract "$FIXTURE/nested.tar.gz" "$FIXTURE/stag
 check "nested extract flattened" 0 "$([[ -f "$FIXTURE/staged_nested/VERSION" ]] && echo 0 || echo 1)"
 check "nested flatten dropped wrapper" 0 "$([[ ! -d "$FIXTURE/staged_nested/caelestia-shell-v1.0.2" ]] && echo 0 || echo 1)"
 
+# --- upgrade path: legacy install (no VERSION at all) -> v1.0.2 release shape ---
+# Reproduces the real user situation: an install made before VERSION metadata
+# existed, updated from a tarball built by release.yml (which now embeds VERSION).
+# After the update the install must self-report 1.0.2 and the same release must
+# no longer compare as newer.
+mkdir -p "$FIXTURE/legacy_install"
+echo "// legacy shell" >"$FIXTURE/legacy_install/shell.qml"
+mkdir -p "$FIXTURE/legacy_install/plugins"
+echo "plugin" >"$FIXTURE/legacy_install/plugins/demo.toml" # must survive apply
+mkdir -p "$FIXTURE/legacy_payload/caelestia-shell-v1.0.2"
+echo '1.0.2' >"$FIXTURE/legacy_payload/caelestia-shell-v1.0.2/VERSION"
+echo "// 1.0.2 shell" >"$FIXTURE/legacy_payload/caelestia-shell-v1.0.2/shell.qml"
+tar -czf "$FIXTURE/legacy-1.0.2.tar.gz" -C "$FIXTURE/legacy_payload" caelestia-shell-v1.0.2
+check "legacy install has no VERSION" 0 "$([[ ! -f "$FIXTURE/legacy_install/VERSION" ]] && echo 0 || echo 1)"
+run "legacy extract" 0 "$SCRIPT" extract "$FIXTURE/legacy-1.0.2.tar.gz" "$FIXTURE/legacy_staged"
+run "legacy apply" 0 "$SCRIPT" apply "$FIXTURE/legacy_staged" "$FIXTURE/legacy_install" "$FIXTURE/legacy_meta"
+check "legacy apply registers installed version" 0 "$([[ "$(cat "$FIXTURE/legacy_install/VERSION")" == "1.0.2" ]] && echo 0 || echo 1)"
+check "legacy apply preserved plugins" 0 "$([[ -f "$FIXTURE/legacy_install/plugins/demo.toml" ]] && echo 0 || echo 1)"
+check "registered release is not newer than itself" 0 \
+    "$([ "$($SCRIPT compare "$(cat "$FIXTURE/legacy_install/VERSION")" 1.0.2)" == "0" ] && echo 0 || echo 1)"
+run "legacy rollback restores pre-VERSION state" 0 "$SCRIPT" rollback "$FIXTURE/legacy_install" "$FIXTURE/legacy_meta"
+check "legacy rollback removed VERSION" 0 "$([[ ! -f "$FIXTURE/legacy_install/VERSION" ]] && echo 0 || echo 1)"
+
 # --- body digest is what the updater falls back to (QML side); ensure marker form ---
 check "digest marker regex" 0 "$(printf 'x <!-- updater-digest sha256:%s --> y' "$DIGEST" | grep -qP 'sha256:?\s*[0-9a-fA-F]{64}' && echo 0 || echo 1)"
 
