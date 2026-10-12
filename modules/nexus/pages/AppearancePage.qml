@@ -8,6 +8,7 @@ import Caelestia.I18n
 import qs.components
 import qs.components.controls
 import qs.services
+import qs.utils
 import qs.modules.nexus.common
 
 PageBase {
@@ -42,11 +43,47 @@ PageBase {
         }
     ]
 
+    readonly property list<MenuItem> sourceItems: [
+        MenuItem {
+            text: Tr.tr("Built-in Celestia palette")
+            value: "builtin"
+            icon: "palette"
+        },
+        MenuItem {
+            text: Tr.tr("Colours derived from wallpaper")
+            value: "wallpaper"
+            icon: "image"
+        },
+        MenuItem {
+            text: Tr.tr("Custom seed colour")
+            value: "custom"
+            icon: "adjust"
+        },
+        MenuItem {
+            text: Tr.tr("Scheme file (external)")
+            value: "scheme"
+            icon: "file_download"
+        }
+    ]
+
     readonly property string currentSeed: GlobalConfig.appearance.colors.seed
-    readonly property bool customColors: GlobalConfig.appearance.colors.customEnabled
 
     function clamp(v: real, lo: real, hi: real): real {
         return Math.max(lo, Math.min(hi, v));
+    }
+
+    // Honest description of what the wallpaper source is doing right now.
+    function wallpaperStatusText(): string {
+        switch (Colours.extractionState) {
+        case "extracting":
+            return Tr.tr("Extracting colours…");
+        case "ok":
+            return Tr.tr("Using %1 from %2").arg(Colours.wallpaperSeed).arg(Paths.shortenHome(Wallpapers.current));
+        case "failed":
+            return Colours.statusMessage || Tr.tr("Extraction failed");
+        default:
+            return Tr.tr("Not extracted yet");
+        }
     }
 
     function setInterfaceFamily(family: string): void {
@@ -86,18 +123,46 @@ PageBase {
             text: Tr.tr("Colors")
         }
 
-        ToggleRow {
+        SelectRow {
             first: true
-            text: Tr.tr("Use custom colors")
-            subtext: Tr.tr("Generate a full palette from a seed color")
-            checked: root.customColors
-            onToggled: GlobalConfig.appearance.colors.customEnabled = checked
+            label: Tr.tr("Palette source")
+            subtext: Tr.tr("Which generator owns the shell palette")
+            menuItems: root.sourceItems
+            active: root.sourceItems.find(i => i.value === Colours.paletteSource) ?? null
+            fallbackText: Colours.paletteSource
+            onSelected: item => Colours.setPaletteSource(item.value)
+        }
+
+        SelectRow {
+            visible: Colours.paletteSource === "builtin"
+            label: Tr.tr("Built-in palette")
+            subtext: Tr.tr("Coordinated dark and light Celestia palettes")
+            menuItems: builtinPaletteItems.instances
+            // qmllint disable missing-property
+            active: builtinPaletteItems.instances.find(i => i.value === Colours.builtinPalette) ?? null
+            fallbackText: BuiltinPalettes.label(Colours.builtinPalette)
+            onSelected: item => Colours.setBuiltinPalette(item.value ?? "")
+            // qmllint enable missing-property
+
+            Variants {
+                id: builtinPaletteItems
+
+                model: BuiltinPalettes.defs
+
+                MenuItem {
+                    required property var modelData
+
+                    text: modelData.label
+                    icon: modelData.icon
+                    value: modelData.id
+                }
+            }
         }
 
         ConnectedRect {
+            visible: Colours.paletteSource === "custom"
             Layout.fillWidth: true
             implicitHeight: seedColumn.implicitHeight + Tokens.padding.medium * 2
-            enabled: root.customColors
 
             ColumnLayout {
                 id: seedColumn
@@ -145,25 +210,30 @@ PageBase {
         }
 
         TextFieldRow {
+            visible: Colours.paletteSource === "custom"
             label: Tr.tr("Seed hex")
             subtext: Tr.tr("Any #rrggbb value")
             value: root.currentSeed
             errorText: Tr.tr("Invalid hex")
             validate: /^#?[0-9a-fA-F]{6}$/
             smallField: true
-            enabled: root.customColors
             onEditingFinished: v => root.setSeed(v)
+        }
+
+        InfoRow {
+            visible: Colours.paletteSource === "wallpaper"
+            label: Colours.extractionState === "failed" ? Tr.tr("Extraction failed") : Tr.tr("Wallpaper colours")
+            value: root.wallpaperStatusText()
         }
 
         SelectRow {
             last: true
             label: Tr.tr("Mode")
-            subtext: Tr.tr("Auto follows your current scheme")
-            enabled: root.customColors
+            subtext: Tr.tr("Auto follows the wallpaper's brightness")
             menuItems: root.modeItems
             active: root.modeItems.find(i => i.value === GlobalConfig.appearance.colors.mode) ?? null
             fallbackText: GlobalConfig.appearance.colors.mode
-            onSelected: item => GlobalConfig.appearance.colors.mode = item.value
+            onSelected: item => Colours.setMode(item.value)
         }
 
         // Density
